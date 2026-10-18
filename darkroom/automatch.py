@@ -1,11 +1,9 @@
 """Hintergrundjob: gleicht unbearbeitete RAWs an das eingebettete Kamera-Vorschaubild an.
 
-Die Pipeline rendert ein RAW ohne Kamera-Look (flach). Der Job gleicht das Ergebnis in zwei Stufen an das eingebettete
-JPEG der Kamera an:
-  1. Tonwert-Parameter (Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz) -> in die YAML.
-  2. Farbmatrix (3x3) und Tonkurven pro Kanal (Kamera-Look: Sättigung, S-Kurve, Farbstich) -> als Script.
-Das Script beginnt mit `# auto_match` und ist von Hand editierbar (Regler STRENGTH). Solange nur Werte des Jobs
-vorhanden sind, gilt das Foto weiter als «unbearbeitet».
+Die Pipeline rendert ein RAW ohne Kamera-Look (flach). Der Job gleicht das Ergebnis an das eingebettete JPEG der Kamera an:
+  - Tonwert-Parameter (Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz) und Schärfung -> in die YAML.
+  - Optional (DARKROOM_AUTOMATCH_SCRIPT=1): Farbmatrix und Tonkurven pro Kanal als Script mit Kopfzeile `# auto_match`.
+Solange nur Werte des Jobs vorhanden sind, gilt das Foto weiter als «unbearbeitet».
 """
 from __future__ import annotations
 
@@ -20,6 +18,10 @@ from . import catalog
 from .render import RAW_EXT, _load_base, _sharpen, _tone
 from .schema import Params, Sharpen, dump_params, load_params
 
+import os
+
+# Stufe 2 (Kamera-Look als Script) ist standardmässig aus; DARKROOM_AUTOMATCH_SCRIPT=1 schaltet sie ein.
+WRITE_SCRIPT = os.environ.get("DARKROOM_AUTOMATCH_SCRIPT") == "1"
 FIT_SIDE = 192  # Kantenlänge für den Vergleich
 MIN_IMPROVEMENT = 0.10  # mindestens 10 % weniger Abweichung als ohne Anpassung
 ASPECT_TOLERANCE = 0.03
@@ -122,9 +124,9 @@ def fit_photo(path: Path) -> dict:
         vals["sharpen"] = {"amount": amount, "radius": 1.0}
     # Stufe 2: Kamera-Look als Script auf dem Ergebnis der Parameter
     ours = _tone(base, Params(**{k: v for k, v in vals.items() if k != "sharpen"}))
-    look = _fit_look(ours, target)
+    look = _fit_look(ours, target) if WRITE_SCRIPT else {"error": after_params}
     after = look["error"]
-    script = look_script(look) if after < after_params * 0.95 else None
+    script = look_script(look) if WRITE_SCRIPT and after < after_params * 0.95 else None
     if script is None:
         after = after_params
     if before <= 0 or ((before - after) / before < MIN_IMPROVEMENT and "sharpen" not in vals):

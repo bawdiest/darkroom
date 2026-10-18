@@ -45,65 +45,16 @@ Tests: `python -m unittest discover -s tests` (Sandbox, Prüfungen, Ausgabe, KI-
 ## Angleichen an das Kamera-Vorschaubild
 
 Der Button **Angleichen** im Leuchttisch startet einen Hintergrundjob für die **aktuell angezeigten Fotos** (Filter
-einsetzen, um die Auswahl einzuschränken; vorher gibt es eine Rückfrage). Pro unbearbeitetem RAW passiert in zwei Stufen:
+einsetzen, um die Auswahl einzuschränken; vorher gibt es eine Rückfrage). Pro unbearbeitetem RAW sucht er Belichtung,
+Kontrast, Lichter, Tiefen, Weiss, Schwarz und Schärfung so, dass das Bild dem eingebetteten JPEG der Kamera ähnlicher
+wird, und schreibt die Werte in die YAML. Es entsteht **kein Script**; ein früher vom Job angelegtes Auto-Script
+(`# auto_match`) wird beim erneuten Lauf entfernt.
 
-1. **Parameter:** Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz werden so gesucht, dass das Bild dem eingebetteten
-   JPEG der Kamera ähnlicher wird (steht in der YAML).
-2. **Kamera-Look als Script:** Eine Farbmatrix (3x3) und Tonkurven pro Kanal bilden Sättigung, S-Kurve und Farbstich nach.
-   Das Script beginnt mit `# auto_match` und ist editierbar; `STRENGTH` (0..1) blendet den Look stufenlos ein oder aus.
-
-Solange nur Werte des Jobs vorhanden sind, gilt das Foto als «unbearbeitet» (Marker `auto_match`, Badge «Auto»).
-Bearbeitete Fotos und Fotos mit eigenem Script fasst der Job nie an; löschst du die Zeile `# auto_match`, gehört das
-Script dir. Ohne deutliche Verbesserung (weniger als 10 %), ohne eingebettetes Vorschaubild oder mit abweichendem
-Seitenverhältnis wird übersprungen. Ein Klick während des Laufs stoppt den Job.
-Grenzen: nur globale Anpassungen. Lokaler Kontrast, Objektivkorrektur und Rauschreduzierung der Kamera werden nicht nachgebildet.
-
-## Script-Vertrag
-
-```python
-def process(img, p):
-    # img: float32 (H, W, 3), RGB, 0..1, sRGB-kodiert, aus dem RAW mit den YAML-Parametern entwickelt
-    # p:   Parameter-Dict; p["_scale"] = 1.0 bei voller Auflösung, kleiner in der Vorschau
-    #      -> alle Pixelgrössen (Radius, Sigma, Kernel) mit p["_scale"] multiplizieren
-    return img   # float32 (H2, W2, 3), 0..1, H2 <= H, W2 <= W, nur endliche Werte
-```
-
-Erlaubt: `numpy`, `cv2`, `skimage`, `scipy`, `math`, `functools`, `itertools`, `typing` (`np` und `cv2` sind vorbelegt).
-Verboten: jeder Dateizugriff (`open`, `imread`, `np.load`, `skimage.io` …), `eval`/`exec`, Doppel-Unterstrich-Namen,
-andere Importe. Die vollständige Liste steht in `darkroom/policy.py` und wird von Prüfung, Sandbox **und** KI-Prompt gemeinsam benutzt.
-
-Scripts werden in `data/scripts/<foto>.py` gespeichert, wiederverwendbare in `data/script_presets/`.
-Mehr Bibliotheken: Name in `ALLOWED_IMPORTS` (policy.py) ergänzen und installieren.
-
-## Sandbox
-
-Das Script bekommt nur ein temporäres Job-Verzeichnis mit dem einen Foto (als Array), kein Netzwerk, Limits für Zeit und Speicher.
-
-| Stufe | Wirkung | Wann |
-|---|---|---|
-| `bwrap` | Netzwerk, Prozesse und Dateisystem getrennt | bubblewrap installiert und funktionsfähig |
-| `unshare` | nur Netzwerk getrennt; Dateizugriff nur durch statische Prüfung und eingeschränkte Builtins | Fallback |
-| `none` | keine Isolation | nie ohne ausdrückliche Einstellung |
-
-In Docker braucht `bwrap` die `security_opt`-Einträge der `docker-compose.yml`; ohne `/proc`-Neumontage (in Docker maskiert) arbeitet es automatisch weiter, erzwingbar mit `DARKROOM_BWRAP_PROC=0`.
-Standardmässig laufen Scripts **nur mit `bwrap`**. Die Statuszeile in der Dunkelkammer zeigt die aktive Stufe.
-`DARKROOM_SANDBOX_MIN=unshare` erlaubt den Fallback bewusst. Die statische Prüfung ist Komfort, kein Schutz.
-
-## KI
-
-`DARKROOM_AI_PROVIDER=claude` (Standard, `ANTHROPIC_API_KEY`, Modell via `DARKROOM_AI_MODEL`) oder `ollama`
-(`OLLAMA_URL`, `OLLAMA_MODEL`). Gesendet werden nur deine Beschreibung, die YAML-Parameter und ein vorhandenes Script.
-Das Foto verlässt den Server nicht.
-
-## Ausgabeprofile
-
-Standard: `web`, `voll_srgb`, `druck_adobergb`, `archiv_tiff`. Eigene in `data/output_profiles.yaml`:
-
-```yaml
-mein_profil: { format: jpeg, color_space: adobergb, quality: 92, max_side: 4000 }
-```
-
-JPEG bettet immer ein ICC-Profil ein (sRGB oder Adobe RGB). TIFF 16 Bit ist vorerst nur mit sRGB möglich.
+Solange nur Werte des Jobs vorhanden sind, gilt das Foto als «unbearbeitet» (Marker `auto_match`). Bearbeitete Fotos
+und Fotos mit eigenem Script fasst der Job nie an. Ohne deutliche Verbesserung (weniger als 10 %), ohne eingebettetes
+Vorschaubild oder mit abweichendem Seitenverhältnis wird übersprungen. Ein Klick während des Laufs stoppt den Job.
+Grenzen: nur globale Tonwerte; Farbe/Sättigung, lokaler Kontrast und Rauschreduzierung der Kamera werden nicht nachgebildet.
+Experimentell: `DARKROOM_AUTOMATCH_SCRIPT=1` erzeugt zusätzlich einen Kamera-Look (Farbmatrix und Kurven) als Script.
 
 ## Objektivkorrektur
 

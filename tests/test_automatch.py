@@ -30,6 +30,10 @@ TARGET = np.clip(0.5 + 1.25 * (_sat - 0.5) + 0.2 * (_sat - 0.5) ** 3 * 4, 0, 1).
 
 
 class Fit(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.object(automatch, "WRITE_SCRIPT", True)  # Look-Script ist optional und hier eingeschaltet
+        p.start(); self.addCleanup(p.stop)
+
     def run_fit(self, target=TARGET):
         with mock.patch.object(automatch, "_embedded_preview", return_value=target), \
              mock.patch.object(automatch, "_load_base", return_value=BASE):
@@ -71,6 +75,13 @@ class Fit(unittest.TestCase):
 
     def test_smooth_target_needs_no_sharpening(self):
         self.assertNotIn("sharpen", self.run_fit()["params"])
+
+    def test_default_writes_no_script(self):
+        with mock.patch.object(automatch, "WRITE_SCRIPT", False):
+            r = self.run_fit()
+        self.assertTrue(r["ok"], r)
+        self.assertIsNone(r.get("script"))
+        self.assertIn("contrast", r["params"])
 
     def test_identical_image_is_skipped(self):
         r = self.run_fit(_tone(BASE, Params()))
