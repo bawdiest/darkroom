@@ -14,6 +14,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -21,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from . import policy
-from .checks import ScriptError, check_script, validate_output
+from .checks import SandboxError, ScriptError, check_script, validate_output
 
 RUNNER = Path(__file__).with_name("sandbox_runner.py")
 RANK = {"none": 0, "unshare": 1, "bwrap": 2}
@@ -76,6 +77,13 @@ def status() -> dict:
     }
 
 
+def _lib_path() -> str:
+    """Verzeichnisse mit libpython & Co. (z. B. /usr/local/lib im Docker-Image 'python'); der Loader findet sie sonst
+    nur über /etc/ld.so.cache, die in der Sandbox fehlt."""
+    dirs = [sysconfig.get_config_var("LIBDIR") or "", "/usr/local/lib", "/usr/lib", "/lib"]
+    return ":".join(dict.fromkeys(d for d in dirs if d))
+
+
 def _bwrap_prefix(job: Path) -> list[str]:
     binds: list[str] = []
     seen: set[str] = set()
@@ -91,6 +99,7 @@ def _bwrap_prefix(job: Path) -> list[str]:
             seen.add(p)
         else:
             ro(p)
+    ro("/etc/ld.so.cache")
     for p in {sys.prefix, sys.base_prefix, *[x for x in sys.path if x]}:
         if not p.startswith("/usr/") and p != "/usr":
             ro(os.path.realpath(p) if os.path.isdir(p) else "")
@@ -99,6 +108,7 @@ def _bwrap_prefix(job: Path) -> list[str]:
         *binds, *(["--proc", "/proc"] if _bwrap_variant() == "proc" else []), "--dev", "/dev", "--tmpfs", "/tmp",
         "--bind", str(job), "/job", "--ro-bind", str(RUNNER), "/runner.py", "--chdir", "/job",
         "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", "/tmp",
+        "--setenv", "LD_LIBRARY_PATH", _lib_path(),
     ]
 
 
@@ -113,7 +123,7 @@ def _wrap(cmd: list[str], job: Path, level: str) -> tuple[list[str], str]:
 
 def _env() -> dict:
     return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8",
+        "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8", "LD_LIBRARY_PATH": _lib_path(),
         "OMP_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
         "PYTHONDONTWRITEBYTECODE": "1",
     }
@@ -143,7 +153,7 @@ def run_script(code: str, img: np.ndarray, params: dict, timeout: float = policy
     oder wirft ScriptError mit einer verständlichen Meldung."""
     st = status()
     if not st["allowed"]:
-        raise ScriptError(
+        raise SandboxError(
             f"Scripts sind gesperrt: Sandbox-Stufe '{st['level']}' ({st['description']}), verlangt ist '{st['required']}'. "
             "Siehe README, Abschnitt Sandbox."
         )
@@ -176,7 +186,8 @@ def run_script(code: str, img: np.ndarray, params: dict, timeout: float = policy
             tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
             if proc.returncode in (-9, 137):
                 raise ScriptError(f"Prozess wurde beendet (vermutlich Speicherlimit {policy.MEMORY_MB} MB).")
-            raise ScriptError("Script ist abgestürzt: " + (" | ".join(tail) or f"Exit-Code {proc.returncode}"))
+            raise SandboxError("Die Sandbox konnte das Script nicht starten (kein Fehler im Script): "
+                               + (" | ".join(tail) or f"Exit-Code {proc.returncode}"))
         res = json.loads(res_file.read_text(encoding="utf-8"))
         if not res.get("ok"):
             raise ScriptError(res.get("error", "Unbekannter Fehler im Script."))

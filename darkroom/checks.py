@@ -12,6 +12,10 @@ class ScriptError(Exception):
     """Fehler im Script oder in dessen Ausgabe. Die Meldung ist für den Benutzer bzw. die KI gedacht."""
 
 
+class SandboxError(ScriptError):
+    """Die Sandbox selbst funktioniert nicht (nicht das Script). Das darf nicht an die KI zurückgegeben werden."""
+
+
 def check_script(code: str) -> list[str]:
     """Gibt eine Liste von Problemen zurück (leer = in Ordnung). Das ist Komfort und kein Schutz;
     der Schutz ist die Sandbox."""

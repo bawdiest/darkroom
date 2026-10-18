@@ -15,7 +15,7 @@ from typing import Callable, Protocol
 import numpy as np
 
 from . import policy
-from .checks import ScriptError, check_script
+from .checks import SandboxError, ScriptError, check_script
 from .sandbox import run_script
 
 MAX_ATTEMPTS = 3
@@ -170,6 +170,10 @@ def generate_script(provider: Provider, request: str, yaml_text: str, current_co
                     if not code.startswith("# Auftrag:"):
                         code = _header(request) + code
                     return {"ok": True, "code": code, "explanation": explanation, "attempts": attempt, "log": log}
+                except SandboxError as e:  # Problem der Umgebung, nicht des Scripts: nicht erneut versuchen
+                    log.append(f"Versuch {attempt}: Sandbox-Fehler, Abbruch ohne weitere Versuche.")
+                    return {"ok": False, "infrastructure": True, "code": code, "explanation": explanation,
+                            "attempts": attempt, "log": log, "error": str(e)}
                 except ScriptError as e:
                     error = str(e)
         log.append(f"Versuch {attempt}: {error.splitlines()[0]}")

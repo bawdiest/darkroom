@@ -207,3 +207,27 @@ class AILoop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Infrastructure(unittest.TestCase):
+    def test_bwrap_gets_loader_config_and_lib_path(self):
+        cmd = sandbox._bwrap_prefix(Path(tempfile.gettempdir()))
+        self.assertIn("LD_LIBRARY_PATH", cmd)
+        value = cmd[cmd.index("LD_LIBRARY_PATH") + 1]
+        self.assertIn("/usr/local/lib", value)
+        if os.path.exists("/etc/ld.so.cache"):
+            self.assertIn("/etc/ld.so.cache", cmd)
+        self.assertIn("LD_LIBRARY_PATH", sandbox._env())
+
+    def test_sandbox_failure_is_not_retried_and_not_sent_to_ai(self):
+        from darkroom.checks import SandboxError
+
+        def broken(*a, **k):
+            raise SandboxError("Die Sandbox konnte das Script nicht starten")
+
+        prov = FakeProvider([block(GOOD)] * 3)
+        r = ai.generate_script(prov, "x", "", None, IMG, {"_scale": 1.0}, runner=broken)
+        self.assertFalse(r["ok"])
+        self.assertTrue(r["infrastructure"])
+        self.assertEqual((r["attempts"], len(prov.calls)), (1, 1))
+        self.assertIn("Sandbox", r["error"])
