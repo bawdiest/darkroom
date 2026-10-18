@@ -118,7 +118,7 @@ def _env() -> dict:
     return {
         "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8",
         "OMP_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
-        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1", "DARKROOM_RLIMIT_AS": os.environ.get("DARKROOM_RLIMIT_AS", "0"),
     }
 
 

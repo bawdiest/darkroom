@@ -23,7 +23,10 @@ def finish(obj: dict, code: int):
 
 # Ressourcenlimits (zusätzlich zum Zeitlimit des Hosts)
 mem = int(policy["memory_mb"]) * 1024 * 1024
-for res, val in ((resource.RLIMIT_AS, mem), (resource.RLIMIT_FSIZE, 2 * 1024**3), (resource.RLIMIT_NOFILE, 256),
+# RLIMIT_AS bringt OpenCV in Docker beim Import zum Absturz (Segfault, im Diagnose-Lauf gemessen) und ist daher nur
+# optional (DARKROOM_RLIMIT_AS=1). Den Speicher begrenzt stattdessen der Container (mem_limit in docker-compose.yml).
+limits = [(resource.RLIMIT_AS, mem)] if os.environ.get("DARKROOM_RLIMIT_AS") == "1" else []
+for res, val in (*limits, (resource.RLIMIT_FSIZE, 2 * 1024**3), (resource.RLIMIT_NOFILE, 256),
                  (resource.RLIMIT_CORE, 0)):
     try:
         resource.setrlimit(res, (val, val))

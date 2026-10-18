@@ -25,6 +25,8 @@ services:
     security_opt:
       - seccomp=unconfined
       - apparmor=unconfined
+    # Speichergrenze für den ganzen Container (ersetzt das Adressraum-Limit der Sandbox, das OpenCV zum Absturz brachte)
+    mem_limit: ${DARKROOM_MEMORY:-8g}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

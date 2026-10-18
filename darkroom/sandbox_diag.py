@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import sandbox
 
-LIMIT = "import resource;m=4096*1024*1024;resource.setrlimit(resource.RLIMIT_AS,(m,m));"
+LIMIT = "import resource;m=4096*1024*1024;resource.setrlimit(resource.RLIMIT_AS,(m,m));"  # bekannter Verursacher
 PY = sys.executable
 
 
