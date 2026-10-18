@@ -75,11 +75,12 @@ def read_exif(path: Path) -> dict:
     return out
 
 
-def make_thumb(path: Path, pid: str, p: Params) -> None:
+def make_thumb(path: Path, pid: str, p: Params, original: bool = False) -> None:
+    """original=True: Vorschau ohne Bearbeitung (eingebettetes Kamera-JPEG), sonst Standard beim Scan."""
     THUMBS.mkdir(parents=True, exist_ok=True)
     target = THUMBS / f"{pid}.jpg"
     rgb = None
-    if path.suffix.lower() in RAW_EXT:
+    if path.suffix.lower() in RAW_EXT and (original or not is_edited(p)):
         try:
             import rawpy
 
@@ -144,7 +145,50 @@ def sync_index(pid: str, p: Params) -> None:
     con.commit()
 
 
-def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, limit=500) -> list[dict]:
+_STATE_CACHE: dict = {}
+_NOT_EDIT = {"preset", "rating", "label", "tags", "_unmapped"}
+
+
+def is_edited(p: Params) -> bool:
+    """True, wenn mindestens ein Bildparameter vom Standard abweicht (Bewertung, Label, Tags zählen nicht)."""
+    cur, base = p.model_dump(exclude_none=True), Params().model_dump(exclude_none=True)
+    strip = lambda d: {k: v for k, v in d.items() if k not in _NOT_EDIT}
+    return strip(cur) != strip(base)
+
+
+def edit_state(rel: str) -> dict:
+    """{'edited', 'has_script', 'thumb_v'} für ein Foto. Gecacht nach Änderungszeit der Dateien."""
+    pf, sf = params_file(rel), script_file(rel)
+    pm = pf.stat().st_mtime_ns if pf.exists() else 0
+    has_script = sf.exists() and bool(sf.read_text(encoding="utf-8").strip())
+    key = (pm, has_script)
+    hit = _STATE_CACHE.get(rel)
+    if hit and hit[0] == key:
+        edited = hit[1]
+    else:
+        try:
+            edited = pf.exists() and is_edited(load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR))
+        except Exception:
+            edited = False
+        _STATE_CACHE[rel] = (key, edited)
+    return {"edited": bool(edited), "has_script": has_script}
+
+
+def thumb_stale(rel: str, pid: str) -> bool:
+    """Vorschaubild ist älter als Parameter oder Script (z. B. von Hand oder vor diesem Feature gespeichert)."""
+    f = THUMBS / f"{pid}.jpg"
+    t = f.stat().st_mtime_ns if f.exists() else 0
+    newest = max((x.stat().st_mtime_ns for x in (params_file(rel), script_file(rel)) if x.exists()), default=0)
+    return newest > t
+
+
+def thumb_version(pid: str) -> int:
+    f = THUMBS / f"{pid}.jpg"
+    return f.stat().st_mtime_ns // 1_000_000 if f.exists() else 0
+
+
+def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=None, limit=500) -> list[dict]:
+    """state: None/'' = alle, 'edited' = bearbeitet, 'script' = mit Script, 'unedited' = unbearbeitet."""
     sql, args = "SELECT * FROM photos WHERE rating>=?", [min_rating]
     if camera:
         sql += " AND camera=?"; args.append(camera)
@@ -154,9 +198,21 @@ def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, limit=50
         sql += " AND tags LIKE ?"; args.append(f'%"{tag}"%')
     if q:
         sql += " AND (path LIKE ? OR tags LIKE ?)"; args += [f"%{q}%", f"%{q}%"]
-    sql += " ORDER BY taken DESC, path LIMIT ?"
-    args.append(limit)
-    return [dict(r) | {"tags": json.loads(r["tags"])} for r in db().execute(sql, args)]
+    sql += " ORDER BY taken DESC, path"
+    out = []
+    for r in db().execute(sql, args):
+        d = dict(r) | {"tags": json.loads(r["tags"])} | edit_state(r["path"]) | {"thumb_v": thumb_version(r["id"])}
+        d["thumb_stale"] = (d["edited"] or d["has_script"]) and thumb_stale(r["path"], r["id"])
+        if state == "edited" and not (d["edited"] or d["has_script"]):
+            continue
+        if state == "script" and not d["has_script"]:
+            continue
+        if state == "unedited" and (d["edited"] or d["has_script"]):
+            continue
+        out.append(d)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def facets() -> dict:

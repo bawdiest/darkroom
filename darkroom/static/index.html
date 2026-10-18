@@ -22,6 +22,9 @@
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
   .card:hover { border-color:var(--acc); }
   .card .ph { width:100%; height:calc(var(--cell) * 0.75); background:#111; position:relative; }  /* Höhe wächst mit der Breite */
+  .badges { position:absolute; left:6px; top:6px; display:flex; gap:4px; z-index:1; }
+  .badge { font-size:11px; line-height:1; padding:3px 6px; border-radius:10px; background:rgba(20,20,22,.82); color:var(--acc); border:1px solid rgba(224,162,74,.5); }
+  .badge.sc { color:#7ee787; border-color:rgba(126,231,135,.5); }
   .card img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }  /* ganzes Foto, nie beschnitten */
   .card .meta { padding:5px 8px; font-size:12px; color:var(--mute); display:flex; justify-content:space-between; gap:6px; white-space:nowrap; overflow:hidden; }
   .card .meta span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
@@ -69,6 +72,7 @@
       <div><label>Kamera</label><select id="fcam"><option value="">alle</option></select></div>
       <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+      <div><label>Bearbeitung</label><select id="fstate"><option value="">alle</option><option value="edited">bearbeitet</option><option value="script">mit Script</option><option value="unedited">unbearbeitet</option></select></div>
       <div><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
       <div><label>Grösse der Vorschau <span id="sizeVal" style="float:right"></span></label>
         <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
@@ -128,20 +132,47 @@ async function loadFacets() {
   const fill = (sel, arr) => { const el = $(sel), v = el.value; el.length = 1; arr.forEach(x => el.add(new Option(x, x))); el.value = v; };
   fill('#fcam', f.cameras); fill('#flens', f.lenses); fill('#ftag', f.tags);
 }
+function badges(ph) {
+  const b = (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
+            (ph.has_script ? '<span class="badge sc" title="Hat ein Script">&lt;/&gt; Script</span>' : '');
+  return b ? `<div class="badges">${b}</div>` : '';
+}
+// Aktualisiert Marker und Vorschaubilder der sichtbaren Karten, ohne das Raster neu aufzubauen
+async function refreshCards() {
+  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value, state:$('#fstate').value });
+  for (const [k,v] of [...p]) if (!v) p.delete(k);
+  const list = await (await api('/api/photos?' + p)).json();
+  let pending = false;
+  for (const ph of list) {
+    const card = $(`.card[data-id="${ph.id}"]`); if (!card) continue;
+    const img = card.querySelector('img'), want = `/api/thumb/${ph.id}?v=${ph.thumb_v}`;
+    if (img.getAttribute('src') !== want) img.src = want;
+    const old = card.querySelector('.badges'); if (old) old.remove();
+    card.querySelector('.ph').insertAdjacentHTML('afterbegin', badges(ph));
+    if (ph.thumb_stale) pending = true;
+  }
+  return pending;
+}
+let pollTimer = null;
+function pollThumbs(n = 8) {  // nach dem Speichern: Vorschaubild entsteht im Hintergrund
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => { try { if (await refreshCards() && n > 0) pollThumbs(n - 1); } catch (e) {} }, 2500);
+}
 async function loadGrid() {
-  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value });
+  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value, state:$('#fstate').value });
   for (const [k,v] of [...p]) if (!v) p.delete(k);
   const list = await (await api('/api/photos?' + p)).json();
   $('#count').textContent = list.length + ' Fotos';
   $('#grid').innerHTML = '';
   for (const ph of list) {
     const d = document.createElement('div'); d.className = 'card';
-    d.innerHTML = `<div class="ph"><img loading="lazy" src="/api/thumb/${ph.id}"></div><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
+    d.dataset.id = ph.id;
+    d.innerHTML = `<div class="ph">${badges(ph)}<img loading="lazy" src="/api/thumb/${ph.id}?v=${ph.thumb_v}"></div><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
     d.onclick = () => openDark(ph);
     $('#grid').appendChild(d);
   }
 }
-['#fq','#fcam','#flens','#frate','#ftag'].forEach(s => $(s).addEventListener('input', loadGrid));
+['#fq','#fcam','#flens','#frate','#ftag','#fstate'].forEach(s => $(s).addEventListener('input', loadGrid));
 $('#scan').onclick = async () => {
   $('#scan').textContent = 'Scanne…';
   try { const s = await (await api('/api/scan', {method:'POST'})).json();
@@ -164,7 +195,8 @@ function show(view) {
   $('#tabLight').classList.toggle('on', view === 'light');
   $('#tabDark').classList.toggle('on', view === 'dark');
 }
-$('#tabLight').onclick = () => { show('light'); loadGrid(); };
+$('#tabLight').onclick = async () => { show('light'); await loadGrid(); if (dirty) { dirty = false; pollThumbs(); } };
+let dirty = false;
 $('#tabDark').onclick = () => current && show('dark');
 
 async function openDark(ph) {
@@ -194,7 +226,7 @@ async function save() {
   try {
     await api(`/api/photos/${current.id}/params`, j({yaml:$('#editor').value}));
     await api(`/api/photos/${current.id}/script`, j({script:$('#scriptEditor').value}));
-    $('#status').textContent = 'gespeichert'; renderPreview();
+    $('#status').textContent = 'gespeichert'; dirty = true; renderPreview();
   } catch (e) { $('#err').textContent = e.message; }
 }
 $('#save').onclick = save;

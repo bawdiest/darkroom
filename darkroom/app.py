@@ -4,7 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, HTTPException, Response
+import threading
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
@@ -52,6 +54,43 @@ def _develop_with_script(row, p: Params, script: str | None, max_side: int | Non
     return img
 
 
+_thumb_lock = threading.Lock()
+_queued: set[str] = set()
+
+
+def _refresh_and_unqueue(pid: str) -> None:
+    try:
+        _refresh_thumb(pid)
+    finally:
+        _queued.discard(pid)
+
+
+def _refresh_thumb(pid: str) -> None:
+    """Erzeugt das Vorschaubild des Leuchttischs neu: mit Parametern und Script, bzw. das Original, wenn nichts bearbeitet ist."""
+    try:
+        with _thumb_lock:
+            row = catalog.db().execute("SELECT * FROM photos WHERE id=?", (pid,)).fetchone()
+            if not row:
+                return
+            pf, sf = catalog.params_file(row["path"]), catalog.script_file(row["path"])
+            p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
+            script = sf.read_text(encoding="utf-8") if sf.exists() else ""
+            path = catalog.LIBRARY / row["path"]
+            if not catalog.is_edited(p) and not script.strip():
+                catalog.make_thumb(path, pid, p, original=True)
+                return
+            img, scale = develop(path, p, catalog.THUMB_SIZE)
+            if script.strip():
+                try:
+                    img = sandbox.run_script(script, img, _script_params(p, scale), timeout=policy.PREVIEW_TIMEOUT)
+                except ScriptError:
+                    pass  # Script fehlerhaft: Vorschau ohne Script
+            catalog.THUMBS.mkdir(parents=True, exist_ok=True)
+            (catalog.THUMBS / f"{pid}.jpg").write_bytes(to_jpeg(to_uint8(img), 82))
+    except Exception:  # noqa: BLE001 - Vorschaubild ist nur Komfort
+        pass
+
+
 # ---------- Leuchttisch ----------
 @app.get("/api/status")
 def status():
@@ -59,9 +98,14 @@ def status():
 
 
 @app.get("/api/photos")
-def photos(q: str | None = None, camera: str | None = None, lens: str | None = None,
-           min_rating: int = 0, tag: str | None = None):
-    return catalog.list_photos(q, camera, lens, min_rating, tag)
+def photos(bg: BackgroundTasks, q: str | None = None, camera: str | None = None, lens: str | None = None,
+           min_rating: int = 0, tag: str | None = None, state: str | None = None):
+    out = catalog.list_photos(q, camera, lens, min_rating, tag, state)
+    stale = [d["id"] for d in out if d["thumb_stale"] and d["id"] not in _queued]
+    for pid in stale[:12]:  # veraltete Vorschaubilder nach und nach im Hintergrund erneuern
+        _queued.add(pid)
+        bg.add_task(_refresh_and_unqueue, pid)
+    return out
 
 
 @app.get("/api/facets")
@@ -109,13 +153,14 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
 
 
 @app.put("/api/photos/{pid}/params")
-def save_params(pid: str, body: YamlBody):
+def save_params(pid: str, body: YamlBody, bg: BackgroundTasks):
     row = _photo(pid)
     p = _parse(body.yaml)
     f = catalog.params_file(row["path"])
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(body.yaml, encoding="utf-8")  # Text bleibt wie getippt (Kommentare bleiben erhalten)
     catalog.sync_index(pid, p)
+    bg.add_task(_refresh_thumb, pid)
     return {"ok": True}
 
 
@@ -161,12 +206,13 @@ class ScriptBody(BaseModel):
 
 
 @app.put("/api/photos/{pid}/script")
-def save_script(pid: str, body: ScriptBody):
+def save_script(pid: str, body: ScriptBody, bg: BackgroundTasks):
     row = _photo(pid)
     f = catalog.script_file(row["path"])
     if not body.script.strip():  # leeres Script = kein Script
         if f.exists():
             f.unlink()
+            bg.add_task(_refresh_thumb, pid)
         return {"ok": True, "gespeichert": False}
     from .checks import check_script
 
@@ -175,6 +221,7 @@ def save_script(pid: str, body: ScriptBody):
         raise HTTPException(422, "Script nicht erlaubt:\n" + "\n".join(problems))
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(body.script, encoding="utf-8")
+    bg.add_task(_refresh_thumb, pid)
     return {"ok": True, "gespeichert": True}
 
 
