@@ -18,10 +18,11 @@
   #filters { width:210px; padding:12px; border-right:1px solid var(--line); overflow:auto; display:flex; flex-direction:column; gap:10px; }
   #filters label { color:var(--mute); font-size:12px; display:block; margin-bottom:3px; }
   #filters select, #filters input { width:100%; }
-  #grid { --cell:220px; flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,var(--cell)); justify-content:start; gap:10px; align-content:start; }
+  #grid { --cell:220px; flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,var(--cell)); justify-content:start; gap:10px; align-content:start; grid-auto-rows:max-content; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
   .card:hover { border-color:var(--acc); }
-  .card img { width:100%; aspect-ratio:4/3; object-fit:contain; display:block; background:#111; }  /* ganzes Foto, nie beschnitten */
+  .card .ph { width:100%; height:calc(var(--cell) * 0.75); background:#111; position:relative; }  /* Höhe wächst mit der Breite */
+  .card img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }  /* ganzes Foto, nie beschnitten */
   .card .meta { padding:5px 8px; font-size:12px; color:var(--mute); display:flex; justify-content:space-between; gap:6px; white-space:nowrap; overflow:hidden; }
   .card .meta span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
   .card .meta span:last-child { flex:none; }
@@ -29,13 +30,20 @@
   #preview { flex:1; display:flex; align-items:center; justify-content:center; background:#111; min-width:0; position:relative; }
   #preview img { max-width:100%; max-height:100%; }
   #status { position:absolute; left:10px; bottom:10px; color:var(--mute); font-size:12px; }
-  #side { width:400px; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--panel); }
+  #resizer { width:6px; cursor:col-resize; background:var(--line); flex:none; } #resizer:hover, #resizer.drag { background:var(--acc); }
+  #side { width:400px; min-width:300px; max-width:85vw; flex:none; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--panel); }
   #side .bar { display:flex; gap:8px; padding:8px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  #editor { flex:1; width:100%; background:#18181a; color:var(--fg); border:0; resize:none; padding:12px; font:13px/1.5 ui-monospace, Menlo, monospace; outline:none; tab-size:2; }
+  .code { flex:1; min-height:0; position:relative; background:#18181a; }
+  .code pre, .code textarea { position:absolute; inset:0; margin:0; width:100%; height:100%; border:0; padding:12px; font:13px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size:4; white-space:pre; overflow:auto; }
+  .code pre { pointer-events:none; overflow:hidden; color:var(--fg); }
+  .code textarea { background:transparent; color:transparent; caret-color:var(--fg); resize:none; outline:none; z-index:1; }
+  .code textarea::selection { background:rgba(224,162,74,.35); color:transparent; }
+  .code textarea::placeholder { color:var(--mute); }
+  .tk-c{color:#8b949e;font-style:italic} .tk-s{color:#a5d6ff} .tk-n{color:#79c0ff} .tk-k{color:#ff7b72} .tk-f{color:#d2a8ff} .tk-b{color:#ffa657} .tk-y{color:#7ee787}
   .tabs { display:flex; gap:6px; align-items:center; padding:8px 8px 0; }
   .tabs button { border-radius:6px 6px 0 0; border-bottom:0; }
   .pane { flex:1; min-height:0; display:flex; flex-direction:column; }
-  #desc { height:84px; flex:none; background:#18181a; color:var(--fg); border:0; border-bottom:1px solid var(--line); resize:vertical; padding:10px 12px; font:13px/1.4 system-ui, sans-serif; outline:none; }
+  #desc { height:72px; flex:none; background:#18181a; color:var(--fg); border:0; border-bottom:1px solid var(--line); resize:vertical; padding:10px 12px; font:13px/1.4 system-ui, sans-serif; outline:none; }
   #sbx { font-size:11px; color:var(--mute); } #sbx.bad { color:#ff7b72; }
   #genStatus { font-size:12px; color:var(--mute); white-space:pre-wrap; }
   .foot { border-top:1px solid var(--line); border-bottom:0 !important; }
@@ -71,6 +79,7 @@
   <section id="dark">
     <div style="display:flex; height:100%;">
       <div id="preview"><img id="pimg" alt=""><div id="status"></div></div>
+      <div id="resizer" title="Ziehen, um die Breite zu ändern"></div>
       <div id="side">
         <div class="tabs">
           <button id="tabYaml" class="on">Parameter</button>
@@ -82,16 +91,15 @@
             <select id="presetSel"><option value="">Preset einfügen…</option></select>
             <button id="savePreset">Als Preset speichern</button>
           </div>
-          <textarea id="editor" spellcheck="false"></textarea>
+          <div class="code"><textarea id="editor" spellcheck="false" wrap="off"></textarea></div>
         </div>
         <div id="paneScript" class="pane" style="display:none">
           <textarea id="desc" placeholder="Beschreibe, was mit dem Foto passieren soll, z. B. «Himmel etwas abdunkeln, Schatten weniger rauschen» …"></textarea>
-          <div class="bar"><button id="gen">Code erzeugen</button><span id="genStatus"></span></div>
-          <div class="bar">
-            <select id="spSel"><option value="">Script-Preset laden…</option></select>
-            <button id="saveSp">Als Script-Preset speichern</button>
-          </div>
-          <textarea id="scriptEditor" spellcheck="false" placeholder="Noch kein Script. Beschreibung oben eingeben und «Code erzeugen» drücken oder selbst schreiben: def process(img, p): ..."></textarea>
+          <div class="bar"><button id="gen">Code erzeugen</button>
+            <select id="spSel"><option value="">Preset laden…</option></select>
+            <button id="saveSp" title="Script als Preset speichern">Als Preset speichern</button>
+            <span id="genStatus" style="flex-basis:100%"></span></div>
+          <div class="code"><textarea id="scriptEditor" spellcheck="false" wrap="off" placeholder="Noch kein Script. Beschreibung oben eingeben und «Code erzeugen» drücken oder selbst schreiben: def process(img, p): ..."></textarea></div>
         </div>
         <div class="bar foot">
           <button id="save">Speichern (Strg+S)</button>
@@ -128,7 +136,7 @@ async function loadGrid() {
   $('#grid').innerHTML = '';
   for (const ph of list) {
     const d = document.createElement('div'); d.className = 'card';
-    d.innerHTML = `<img loading="lazy" src="/api/thumb/${ph.id}"><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
+    d.innerHTML = `<div class="ph"><img loading="lazy" src="/api/thumb/${ph.id}"></div><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
     d.onclick = () => openDark(ph);
     $('#grid').appendChild(d);
   }
@@ -200,7 +208,67 @@ $('#scriptEditor').addEventListener('keydown', keys);
 // Parameter: Vorschau automatisch nach kurzer Pause. Script-Änderungen laufen erst mit Strg+Enter / «Vorschau».
 $('#editor').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(renderPreview, $('#scriptEditor').value.trim() ? 1500 : 700); });
 $('#run').onclick = renderPreview;
+
+// ---------- Editor mit Syntax-Highlighting (ohne externe Bibliothek) ----------
+const PY_KW = new Set('False None True and as assert break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield'.split(' '));
+const PY_BUILTIN = new Set('np cv2 skimage scipy math range len min max abs sum int float bool str list dict tuple set zip enumerate map sorted round print isinstance'.split(' '));
+const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const span = (c, t) => `<span class="tk-${c}">${esc(t)}</span>`;
+function hlPython(src) {
+  const re = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d+\.?\d*(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)/g;
+  let out = '', last = 0, prev = '', m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index)); last = re.lastIndex;
+    if (m[1]) out += span('c', m[1]);
+    else if (m[2]) out += span('s', m[2]);
+    else if (m[3]) out += span('n', m[3]);
+    else {
+      const w = m[4];
+      out += (prev === 'def' || prev === 'class') ? span('f', w) : PY_KW.has(w) ? span('k', w) : PY_BUILTIN.has(w) ? span('b', w) : esc(w);
+      prev = w; continue;
+    }
+    prev = '';
+  }
+  return out + esc(src.slice(last));
+}
+function hlYaml(src) {
+  const val = t => esc(t).replace(/(#.*)$/, '<span class="tk-c">$1</span>')
+    .replace(/(^|[\s\[,])(-?\d+\.?\d*)(?=$|[\s,\]#])/g, '$1<span class="tk-n">$2</span>')
+    .replace(/\b(true|false|null|yes|no)\b/g, '<span class="tk-k">$1</span>');
+  return src.split('\n').map(line => {
+    if (/^\s*#/.test(line)) return span('c', line);
+    const m = line.match(/^(\s*-?\s*)([\w.\-]+)(\s*:)(.*)$/);
+    return m ? esc(m[1]) + span('y', m[2]) + esc(m[3]) + val(m[4]) : val(line);
+  }).join('\n');
+}
+function makeEditor(ta, hl) {
+  const pre = document.createElement('pre'); pre.setAttribute('aria-hidden', 'true');
+  ta.parentNode.insertBefore(pre, ta);
+  const sync = () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+  const draw = () => { pre.innerHTML = hl(ta.value) + '\n '; sync(); };
+  const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  Object.defineProperty(ta, 'value', { get() { return desc.get.call(this); }, set(v) { desc.set.call(this, v); draw(); } });
+  ta.addEventListener('input', draw);
+  ta.addEventListener('scroll', sync);
+  draw();
+}
+makeEditor($('#editor'), hlYaml);
+makeEditor($('#scriptEditor'), hlPython);
+
+// ---------- Breite der Seitenleiste (ziehbar, wird gemerkt) ----------
+const side = $('#side');
+try { const w = +localStorage.getItem('sideW'); if (w) side.style.width = w + 'px'; } catch (e) {}
+$('#resizer').addEventListener('pointerdown', e => {
+  const r = $('#resizer'); r.setPointerCapture(e.pointerId); r.classList.add('drag');
+  const move = ev => { side.style.width = Math.max(300, Math.min(innerWidth * 0.85, innerWidth - ev.clientX)) + 'px'; };
+  const up = () => { r.classList.remove('drag'); r.removeEventListener('pointermove', move); r.removeEventListener('pointerup', up);
+    try { localStorage.setItem('sideW', parseInt(side.style.width)); } catch (e) {} };
+  r.addEventListener('pointermove', move); r.addEventListener('pointerup', up);
+});
+
 function tab(which) {
+  let saved = null; try { saved = localStorage.getItem('sideW'); } catch (e) {}
+  if (!saved) side.style.width = which === 'script' ? Math.min(760, innerWidth * 0.55) + 'px' : '400px';
   $('#paneYaml').style.display = which === 'yaml' ? 'flex' : 'none';
   $('#paneScript').style.display = which === 'script' ? 'flex' : 'none';
   $('#tabYaml').classList.toggle('on', which === 'yaml'); $('#tabScript').classList.toggle('on', which === 'script');
