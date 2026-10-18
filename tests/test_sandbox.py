@@ -212,12 +212,21 @@ if __name__ == "__main__":
 class Infrastructure(unittest.TestCase):
     def test_bwrap_gets_loader_config_and_lib_path(self):
         cmd = sandbox._bwrap_prefix(Path(tempfile.gettempdir()))
-        self.assertIn("LD_LIBRARY_PATH", cmd)
-        value = cmd[cmd.index("LD_LIBRARY_PATH") + 1]
-        self.assertIn("/usr/local/lib", value)
+        self.assertNotIn("LD_LIBRARY_PATH", cmd)  # würde gebündelte Wheel-Bibliotheken verdecken
         if os.path.exists("/etc/ld.so.cache"):
             self.assertIn("/etc/ld.so.cache", cmd)
-        self.assertIn("LD_LIBRARY_PATH", sandbox._env())
+        self.assertNotIn("LD_LIBRARY_PATH", sandbox._env())
+
+    def test_crash_in_script_is_script_error(self):
+        # Segfault im Script (nach 'started') ist ein ScriptError, kein SandboxError -> KI darf es erneut versuchen
+        from darkroom.checks import SandboxError
+        code = "def process(img, p):\n    import ctypes\n    return img"
+        try:
+            run("def process(img, p):\n    import faulthandler\n    return img")
+        except SandboxError:
+            self.fail("unerwarteter Sandbox-Fehler")
+        except ScriptError:
+            pass
 
     def test_sandbox_failure_is_not_retried_and_not_sent_to_ai(self):
         from darkroom.checks import SandboxError

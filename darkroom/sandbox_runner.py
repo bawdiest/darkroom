@@ -41,6 +41,7 @@ try:
 except BaseException as e:  # noqa: BLE001
     finish({"ok": False, "error": f"Vorbereitung fehlgeschlagen: {e}"}, 3)
 
+open(os.path.join(job, "started"), "w").close()  # Marker: Bibliotheken geladen, ab hier läuft das Script
 allowed = set(policy["allowed_imports"])
 forbidden_prefixes = tuple(policy["forbidden_module_prefixes"])
 real_import = builtins.__import__

@@ -14,7 +14,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import sysconfig
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -77,13 +76,6 @@ def status() -> dict:
     }
 
 
-def _lib_path() -> str:
-    """Verzeichnisse mit libpython & Co. (z. B. /usr/local/lib im Docker-Image 'python'); der Loader findet sie sonst
-    nur über /etc/ld.so.cache, die in der Sandbox fehlt."""
-    dirs = [sysconfig.get_config_var("LIBDIR") or "", "/usr/local/lib", "/usr/lib", "/lib"]
-    return ":".join(dict.fromkeys(d for d in dirs if d))
-
-
 def _bwrap_prefix(job: Path) -> list[str]:
     binds: list[str] = []
     seen: set[str] = set()
@@ -99,7 +91,9 @@ def _bwrap_prefix(job: Path) -> list[str]:
             seen.add(p)
         else:
             ro(p)
-    ro("/etc/ld.so.cache")
+    for p in ("/etc/ld.so.cache", "/etc/ld.so.conf"):
+        ro(p)
+    ro("/etc/ld.so.conf.d")
     for p in {sys.prefix, sys.base_prefix, *[x for x in sys.path if x]}:
         if not p.startswith("/usr/") and p != "/usr":
             ro(os.path.realpath(p) if os.path.isdir(p) else "")
@@ -108,7 +102,6 @@ def _bwrap_prefix(job: Path) -> list[str]:
         *binds, *(["--proc", "/proc"] if _bwrap_variant() == "proc" else []), "--dev", "/dev", "--tmpfs", "/tmp",
         "--bind", str(job), "/job", "--ro-bind", str(RUNNER), "/runner.py", "--chdir", "/job",
         "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", "/tmp",
-        "--setenv", "LD_LIBRARY_PATH", _lib_path(),
     ]
 
 
@@ -123,7 +116,7 @@ def _wrap(cmd: list[str], job: Path, level: str) -> tuple[list[str], str]:
 
 def _env() -> dict:
     return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8", "LD_LIBRARY_PATH": _lib_path(),
+        "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8",
         "OMP_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2", "MKL_NUM_THREADS": "2",
         "PYTHONDONTWRITEBYTECODE": "1",
     }
@@ -175,7 +168,7 @@ def run_script(code: str, img: np.ndarray, params: dict, timeout: float = policy
             runner, jobarg = "/runner.py", "/job"
         else:
             runner, jobarg = str(RUNNER), str(job)
-        cmd = [sys.executable, "-I", runner, jobarg]
+        cmd = [sys.executable, "-X", "faulthandler", "-I", runner, jobarg]
         try:
             proc = run_command(cmd, job, timeout, level)
         except subprocess.TimeoutExpired:
@@ -183,11 +176,17 @@ def run_script(code: str, img: np.ndarray, params: dict, timeout: float = policy
 
         res_file = job / "result.json"
         if not res_file.exists():
-            tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
+            tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-6:]
             if proc.returncode in (-9, 137):
                 raise ScriptError(f"Prozess wurde beendet (vermutlich Speicherlimit {policy.MEMORY_MB} MB).")
+            if (job / "started").exists() and proc.returncode in (-11, 139, -6, 134, -7, -4):
+                # Start war in Ordnung, der Absturz geschah beim Ausführen des Scripts (z. B. in OpenCV): Script-Fehler
+                raise ScriptError(f"Das Script hat den Prozess abstürzen lassen (Signal, Exit-Code {proc.returncode}). "
+                                  "Verwende andere/robustere Funktionen oder kleinere Parameter. "
+                                  + " | ".join(tail[-3:]))
             raise SandboxError("Die Sandbox konnte das Script nicht starten (kein Fehler im Script): "
-                               + (" | ".join(tail) or f"Exit-Code {proc.returncode}"))
+                               + (" | ".join(tail) or f"Exit-Code {proc.returncode}")
+                               + f" [Exit-Code {proc.returncode}, Stufe {level}]")
         res = json.loads(res_file.read_text(encoding="utf-8"))
         if not res.get("ok"):
             raise ScriptError(res.get("error", "Unbekannter Fehler im Script."))
