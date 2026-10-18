@@ -1,6 +1,6 @@
 FROM python:3.12-slim
-# bubblewrap: Sandbox fuer Scripts (siehe README)
-RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap && rm -rf /var/lib/apt/lists/*
+# bubblewrap: Sandbox fuer Scripts (siehe README); libglib2.0-0: wird von lensfunpy (Objektivkorrektur) benoetigt
+RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
