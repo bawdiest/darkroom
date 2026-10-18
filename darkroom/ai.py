@@ -5,6 +5,7 @@ Das Foto selbst und seine Metadaten verlassen den Server nicht.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -29,6 +30,8 @@ class Provider(Protocol):
     name: str
 
     def complete(self, system: str, messages: list[dict]) -> str: ...
+
+    def describe_image(self, system: str, prompt: str, jpeg: bytes) -> str: ...
 
 
 def _post(url: str, headers: dict, body: dict, timeout: float = 180) -> dict:
@@ -57,6 +60,13 @@ class ClaudeProvider:
         )
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
 
+    def describe_image(self, system: str, prompt: str, jpeg: bytes) -> str:
+        """Schickt EIN Bild (JPEG) mit einer Frage an das Modell. Nur für das KI-Tagging; das Foto verlässt dabei den Server."""
+        content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                 "data": base64.b64encode(jpeg).decode()}},
+                   {"type": "text", "text": prompt}]
+        return self.complete(system, [{"role": "user", "content": content}])
+
 
 class OllamaProvider:
     name = "ollama"
@@ -67,6 +77,15 @@ class OllamaProvider:
     def complete(self, system: str, messages: list[dict]) -> str:
         data = _post(f"{self.base_url}/api/chat", {}, {
             "model": self.model, "stream": False, "messages": [{"role": "system", "content": system}, *messages],
+        }, timeout=600)
+        return data.get("message", {}).get("content", "")
+
+    def describe_image(self, system: str, prompt: str, jpeg: bytes) -> str:
+        """Bildfrage an ein lokales Vision-Modell (z. B. qwen2.5vl, llava). Das Bild bleibt im eigenen Netz."""
+        data = _post(f"{self.base_url}/api/chat", {}, {
+            "model": (os.environ.get("OLLAMA_VISION_MODEL") or self.model), "stream": False,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": prompt, "images": [base64.b64encode(jpeg).decode()]}],
         }, timeout=600)
         return data.get("message", {}).get("content", "")
 

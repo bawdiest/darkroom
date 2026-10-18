@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import ai, automatch, catalog, policy, sandbox
+from . import ai, automatch, catalog, policy, sandbox, tagging
 from .checks import ScriptError
 from .output import encode, load_profiles
 from .render import develop, to_jpeg, to_uint8
@@ -129,6 +129,29 @@ def match_state():
 def match_stop():
     automatch.JOB.stop()
     return automatch.JOB.state
+
+
+class TagBody(BaseModel):
+    ids: list[str] | None = None
+    redo: bool = False
+
+
+@app.post("/api/jobs/tag")
+def tag_start(body: TagBody):
+    """Startet das KI-Tagging für die übergebenen Fotos (aktuelle Auswahl). Schickt Vorschaubilder an den KI-Anbieter."""
+    started = tagging.JOB.start(body.ids, body.redo)
+    return {"gestartet": started, **tagging.JOB.state}
+
+
+@app.get("/api/jobs/tag")
+def tag_state():
+    return tagging.JOB.state
+
+
+@app.delete("/api/jobs/tag")
+def tag_stop():
+    tagging.JOB.stop()
+    return tagging.JOB.state
 
 
 @app.get("/api/facets")

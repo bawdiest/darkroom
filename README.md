@@ -56,6 +56,72 @@ Vorschaubild oder mit abweichendem Seitenverhältnis wird übersprungen. Ein Kli
 Grenzen: nur globale Tonwerte; Farbe/Sättigung, lokaler Kontrast und Rauschreduzierung der Kamera werden nicht nachgebildet.
 Experimentell: `DARKROOM_AUTOMATCH_SCRIPT=1` erzeugt zusätzlich einen Kamera-Look (Farbmatrix und Kurven) als Script.
 
+## Script-Vertrag
+
+```python
+def process(img, p):
+    # img: float32 (H, W, 3), RGB, 0..1, sRGB-kodiert, aus dem RAW mit den YAML-Parametern entwickelt
+    # p:   Parameter-Dict; p["_scale"] = 1.0 bei voller Auflösung, kleiner in der Vorschau
+    #      -> alle Pixelgrössen (Radius, Sigma, Kernel) mit p["_scale"] multiplizieren
+    return img   # float32 (H2, W2, 3), 0..1, H2 <= H, W2 <= W, nur endliche Werte
+```
+
+Erlaubt: `numpy`, `cv2`, `skimage`, `scipy`, `math`, `functools`, `itertools`, `typing` (`np` und `cv2` sind vorbelegt).
+Verboten: jeder Dateizugriff (`open`, `imread`, `np.load`, `skimage.io` …), `eval`/`exec`, Doppel-Unterstrich-Namen,
+andere Importe. Die vollständige Liste steht in `darkroom/policy.py` und wird von Prüfung, Sandbox **und** KI-Prompt gemeinsam benutzt.
+
+Scripts werden in `data/scripts/<foto>.py` gespeichert, wiederverwendbare in `data/script_presets/`.
+Mehr Bibliotheken: Name in `ALLOWED_IMPORTS` (policy.py) ergänzen und installieren.
+
+## Sandbox
+
+Das Script bekommt nur ein temporäres Job-Verzeichnis mit dem einen Foto (als Array), kein Netzwerk, Limits für Zeit und Dateigrösse.
+Den Speicher begrenzt der Container (`mem_limit` in `docker-compose.yml`, Variable `DARKROOM_MEMORY`); ein Adressraum-Limit
+im Script-Prozess ist aus, weil es OpenCV beim Import abstürzen lässt (`DARKROOM_RLIMIT_AS=1` schaltet es wieder ein).
+
+| Stufe | Wirkung | Wann |
+|---|---|---|
+| `bwrap` | Netzwerk, Prozesse und Dateisystem getrennt | bubblewrap installiert und funktionsfähig |
+| `unshare` | nur Netzwerk getrennt; Dateizugriff nur durch statische Prüfung und eingeschränkte Builtins | Fallback |
+| `none` | keine Isolation | nie ohne ausdrückliche Einstellung |
+
+In Docker braucht `bwrap` die `security_opt`-Einträge der `docker-compose.yml`; ohne `/proc`-Neumontage (in Docker maskiert) arbeitet es automatisch weiter, erzwingbar mit `DARKROOM_BWRAP_PROC=0`.
+Standardmässig laufen Scripts **nur mit `bwrap`**. Die Statuszeile in der Dunkelkammer zeigt die aktive Stufe.
+`DARKROOM_SANDBOX_MIN=unshare` erlaubt den Fallback bewusst. Die statische Prüfung ist Komfort, kein Schutz.
+Diagnose im Container: `python -m darkroom.sandbox_diag`.
+
+## KI
+
+`DARKROOM_AI_PROVIDER=claude` (Standard, `ANTHROPIC_API_KEY`, Modell via `DARKROOM_AI_MODEL`) oder `ollama`
+(`OLLAMA_URL`, `OLLAMA_MODEL`; für Bilder optional `OLLAMA_VISION_MODEL`, z. B. `qwen2.5vl`).
+
+- **Script-Erzeugung:** Gesendet werden nur deine Beschreibung, die YAML-Parameter und ein vorhandenes Script; kein Bild.
+- **KI-Tags (Button «KI-Tags»):** Gesendet wird **pro Foto das Vorschaubild (ca. 640 px)**, bei Claude also an Anthropic.
+  Das passiert nur nach Rückfrage und nur für die angezeigten Fotos. Mit Ollama und einem Vision-Modell bleibt alles im eigenen Netz.
+
+## KI-Tags und Suche
+
+Der Button **KI-Tags** startet einen Hintergrundjob für die **aktuell angezeigten Fotos** (Suche/Filter einsetzen, um die Auswahl
+zu begrenzen). Das Modell wählt pro Foto 1 bis 6 Tags aus einer festen Liste (Portrait, Landschaft, Auto, Schnee, Berge,
+Architektur, Natur …) und darf höchstens zwei eigene Wörter ergänzen. Eigene Wörter für die Liste: `data/tag_vocabulary.txt`
+(ein Tag pro Zeile). Die Tags liegen in `data/ai_tags/<foto>.json` (versionierbar, die YAML bleibt unberührt). Bereits getaggte
+Fotos werden übersprungen. Nach drei Fehlern in Folge (z. B. ungültiger Schlüssel) stoppt der Job mit einer Meldung.
+
+Das grosse **Suchfeld** oben (Taste `/`) durchsucht Tags (eigene und KI), Dateiname und Ordner, Kamera, Objektiv und Datum.
+Mehrere Wörter müssen alle passen. Beispiele: `berge 2024 canon`, `"Canon EOS R5" schnee`, `mai 2024`, `tag:portrait kamera:sony`,
+`datum:2023-06..2023-08`, `iso:>=1600`, `brennweite:24-70`, `bewertung:>=3`, `-auto` (ausschliessen), `ist:ungetaggt`,
+`ist:bearbeitet`. Über der Übersicht stehen die häufigsten Tags als Schaltflächen zum Anklicken.
+
+## Ausgabeprofile
+
+Standard: `web`, `voll_srgb`, `druck_adobergb`, `archiv_tiff`. Eigene in `data/output_profiles.yaml`:
+
+```yaml
+mein_profil: { format: jpeg, color_space: adobergb, quality: 92, max_side: 4000 }
+```
+
+JPEG bettet immer ein ICC-Profil ein (sRGB oder Adobe RGB). TIFF 16 Bit ist vorerst nur mit sRGB möglich.
+
 ## Objektivkorrektur
 
 `lens: {enabled: true}` in der YAML schaltet Verzeichnung, Vignettierung und Farbsäume ein (einzeln mit `distortion`,

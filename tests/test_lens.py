@@ -21,17 +21,27 @@ class FakeCam: crop_factor = 1.5
 
 class FakeModifier:
     def __init__(self, lens, crop, w, h): self.w, self.h = w, h
-    def initialize(self, focal, ap, dist, scale=1.0): FakeModifier.init_args = (focal, ap, dist, scale)
+    def initialize(self, focal, ap, dist, scale=1.0):
+        FakeModifier.init_args = (focal, ap, dist, scale)
+        self.dist = dist
     gain = "radial"
+    float_broken = False  # simuliert den Fehler: Gleitkomma liefert NaN, ganzzahlige Typen gehen
 
     def apply_color_modification(self, img):
         h, w = img.shape[:2]
+        if img.dtype.kind == "f" and FakeModifier.float_broken:
+            img[:] = np.nan
+            return True
         if FakeModifier.gain == "radial":  # Mitte 1.0, Ecken heller, symmetrisch
             y, x = np.mgrid[0:h, 0:w]
             r = np.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2)) / np.sqrt(2)
-            img *= (1 + 0.6 * r ** 2)[..., None].astype(np.float32)
+            f = (1 + 0.6 * r ** 2)[..., None]
         elif FakeModifier.gain == "left_blown":  # Fehlerbild: links viel zu hell
-            img *= np.linspace(8.0, 1.0, w, dtype=np.float32)[None, :, None]
+            f = np.linspace(8.0, 1.0, w)[None, :, None]
+        else:
+            f = 1.0
+        res = img.astype(np.float64) * f
+        img[:] = np.clip(res, 0, np.iinfo(img.dtype).max).astype(img.dtype) if img.dtype.kind in "ui" else res.astype(img.dtype)
         return True
     def apply_subpixel_geometry_distortion(self):
         xs, ys = np.meshgrid(np.arange(self.w, dtype=np.float32) + 1, np.arange(self.h, dtype=np.float32))  # 1 px verschoben
@@ -80,6 +90,28 @@ class Lens(unittest.TestCase):
                 out = lenscorr.apply(self.img, self.path, LensProfile(enabled=True, distortion=False, tca=False))
                 report = lenscorr.vignette_report(self.path)
             np.testing.assert_allclose(out, self.img)  # unverändert
+            self.assertIn("übersprungen", report)
+        finally:
+            FakeModifier.gain = "radial"
+
+    def test_nan_from_float_falls_back_to_integer_probe(self):
+        FakeModifier.gain, FakeModifier.float_broken = "radial", True
+        try:
+            with self.patch():
+                out = lenscorr.apply(self.img, self.path, LensProfile(enabled=True, distortion=False, tca=False))
+                report = lenscorr.vignette_report(self.path)
+            self.assertGreater(float(out[2, 60, 0]), float(self.img[2, 60, 0]) * 1.3)  # Vignettierung trotzdem angewendet
+            self.assertTrue(np.isfinite(out).all())
+            self.assertIn("uint16", report)
+        finally:
+            FakeModifier.float_broken = False
+
+    def test_all_probes_fail_reports_reasons(self):
+        FakeModifier.gain = "left_blown"
+        try:
+            with self.patch():
+                report = lenscorr.vignette_report(self.path)
+            self.assertIn("float32/EXIF", report)
             self.assertIn("übersprungen", report)
         finally:
             FakeModifier.gain = "radial"

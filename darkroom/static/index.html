@@ -22,6 +22,19 @@
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
   .card:hover { border-color:var(--acc); }
   .card .ph { width:100%; height:calc(var(--cell) * 0.75); background:#111; position:relative; }  /* Höhe wächst mit der Breite */
+  #searchWrap { flex:1 1 auto; min-width:260px; max-width:860px; position:relative; display:flex; align-items:center; gap:6px; }
+  #fq { width:100%; font-size:15px; padding:9px 34px 9px 38px; border-radius:22px; background:#1f1f22; }
+  #fq:focus { outline:none; border-color:var(--acc); }
+  #searchWrap .ico { position:absolute; left:14px; color:var(--mute); pointer-events:none; }
+  #searchWrap #clr { position:absolute; right:44px; background:none; border:0; color:var(--mute); padding:2px 6px; display:none; }
+  #help { border-radius:50%; width:30px; height:30px; padding:0; flex:none; }
+  #helpPanel { display:none; position:absolute; top:44px; left:0; right:0; z-index:20; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 16px; font-size:13px; line-height:1.7; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  #helpPanel code { background:#18181a; padding:1px 6px; border-radius:4px; color:var(--acc); }
+  #chips { display:flex; flex-wrap:wrap; gap:6px; padding:10px 12px 0; }
+  #chips:empty { display:none; }
+  .chip { font-size:12px; padding:3px 10px; border-radius:14px; background:#2e2e33; border:1px solid var(--line); color:var(--fg); cursor:pointer; }
+  .chip small { color:var(--mute); margin-left:4px; } .chip.on { background:var(--acc); color:#1b1b1d; border-color:var(--acc); } .chip.on small { color:#1b1b1d; }
+  #gridWrap { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; }
   .badges { position:absolute; left:6px; top:6px; display:flex; gap:4px; z-index:1; }
   .badge { font-size:11px; line-height:1; padding:3px 6px; border-radius:10px; background:rgba(20,20,22,.82); color:var(--acc); border:1px solid rgba(224,162,74,.5); }
   .badge.sc { color:#7ee787; border-color:rgba(126,231,135,.5); }
@@ -58,18 +71,30 @@
   <h1>DARKROOM</h1>
   <button id="tabLight" class="on">Leuchttisch</button>
   <button id="tabDark" disabled>Dunkelkammer</button>
-  <span class="spacer"></span>
-  <span id="lightTools">
+  <span id="searchWrap">
+    <span class="ico">⌕</span>
+    <input id="fq" type="search" autocomplete="off" spellcheck="false" placeholder="Suchen: Tags, Datum, Kamera, Objektiv, Dateiname …  z. B.  berge 2024 canon">
+    <button id="clr" title="Suche leeren (Esc)">✕</button>
+    <button id="help" title="Suchsyntax">?</button>
+    <div id="helpPanel">
+      <b>Suche</b> – mehrere Wörter müssen alle passen (Tags, Dateiname, Kamera, Objektiv, Datum).<br>
+      <code>berge schnee</code> · <code>"Canon EOS R5"</code> · <code>2024</code> · <code>2024-05</code> · <code>mai 2024</code> · <code>-auto</code> (ausschliessen)<br>
+      <code>tag:portrait</code> · <code>kamera:sony</code> · <code>objektiv:24-105</code> · <code>datum:2023-06..2023-08</code><br>
+      <code>iso:&gt;=1600</code> · <code>brennweite:24-70</code> · <code>bewertung:&gt;=3</code> · <code>name:IMG_12</code><br>
+      <code>ist:bearbeitet</code> · <code>ist:unbearbeitet</code> · <code>ist:script</code> · <code>ist:getaggt</code> · <code>ist:ungetaggt</code><br>
+      <span style="color:var(--mute)">Taste <code>/</code> springt ins Suchfeld.</span>
+    </div>
+  </span>
+  <span id="lightTools" style="margin-left:auto">
     <button id="scan">Bibliothek scannen</button>
     <button id="match" title="Die angezeigten (gefilterten) unbearbeiteten RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen (Tonwert-Parameter und Schärfung). Klick während des Laufs stoppt den Job.">Angleichen</button>
-    <button id="ai" title="KI-Funktionen folgen">KI ▾</button>
+    <button id="ai" title="Die angezeigten Fotos per KI automatisch mit Tags versehen (Portrait, Landschaft, Auto …). Klick während des Laufs stoppt den Job.">KI-Tags</button>
     <button id="exportXmp">XMP exportieren</button>
   </span>
 </header>
 <main>
   <section id="lighttable" style="display:flex; flex:1; min-width:0;">
     <aside id="filters">
-      <div><label>Suche</label><input id="fq" placeholder="Name oder Tag"></div>
       <div><label>Kamera</label><select id="fcam"><option value="">alle</option></select></div>
       <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
@@ -79,7 +104,7 @@
         <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
       <div id="count" style="color:var(--mute)"></div>
     </aside>
-    <div id="grid"></div>
+    <div id="gridWrap"><div id="chips"></div><div id="grid"></div></div>
   </section>
   <section id="dark">
     <div style="display:flex; height:100%;">
@@ -128,10 +153,26 @@ async function api(url, opt) {
 }
 
 // ---------- Leuchttisch ----------
+let tagCounts = {};
+function drawChips() {
+  const q = $('#fq').value.toLowerCase();
+  const top = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 18);
+  $('#chips').innerHTML = top.map(([t, n]) =>
+    `<button class="chip${q.includes('tag:' + (/\s/.test(t) ? '"' + t.toLowerCase() + '"' : t.toLowerCase())) ? ' on' : ''}" data-tag="${t.replace(/"/g, '&quot;')}">${t}<small>${n}</small></button>`).join('');
+}
+$('#chips').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  const t = b.dataset.tag, token = 'tag:' + (/\s/.test(t) ? `"${t}"` : t);
+  const parts = $('#fq').value.split(/\s+(?=(?:[^"]*"[^"]*")*[^"]*$)/).filter(Boolean);  // an Leerzeichen ausserhalb von Anführungszeichen trennen
+  const i = parts.findIndex(x => x.toLowerCase() === token.toLowerCase());
+  if (i >= 0) parts.splice(i, 1); else parts.push(token);
+  $('#fq').value = parts.join(' '); loadGrid(); drawChips(); toggleClear();
+});
 async function loadFacets() {
   const f = await (await api('/api/facets')).json();
   const fill = (sel, arr) => { const el = $(sel), v = el.value; el.length = 1; arr.forEach(x => el.add(new Option(x, x))); el.value = v; };
   fill('#fcam', f.cameras); fill('#flens', f.lenses); fill('#ftag', f.tags);
+  tagCounts = f.tag_counts || {}; drawChips();
 }
 function badges(ph) {
   const b = (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
@@ -168,13 +209,21 @@ async function loadGrid() {
   $('#grid').innerHTML = '';
   for (const ph of list) {
     const d = document.createElement('div'); d.className = 'card';
-    d.dataset.id = ph.id;
+    d.dataset.id = ph.id; d.title = [...ph.tags, ...ph.ai_tags].join(', ');
     d.innerHTML = `<div class="ph">${badges(ph)}<img loading="lazy" src="/api/thumb/${ph.id}?v=${ph.thumb_v}"></div><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
     d.onclick = () => openDark(ph);
     $('#grid').appendChild(d);
   }
 }
-['#fq','#fcam','#flens','#frate','#ftag','#fstate'].forEach(s => $(s).addEventListener('input', loadGrid));
+['#fcam','#flens','#frate','#ftag','#fstate'].forEach(s => $(s).addEventListener('input', loadGrid));
+let searchTimer = null;
+function toggleClear() { $('#clr').style.display = $('#fq').value ? 'block' : 'none'; }
+$('#fq').addEventListener('input', () => { toggleClear(); clearTimeout(searchTimer); searchTimer = setTimeout(() => { loadGrid(); drawChips(); }, 250); });
+$('#fq').addEventListener('keydown', e => { if (e.key === 'Escape') { e.target.value = ''; toggleClear(); loadGrid(); drawChips(); } });
+$('#clr').onclick = () => { $('#fq').value = ''; toggleClear(); loadGrid(); drawChips(); $('#fq').focus(); };
+$('#help').onclick = e => { e.stopPropagation(); const h = $('#helpPanel'); h.style.display = h.style.display === 'block' ? 'none' : 'block'; };
+document.addEventListener('click', e => { if (!e.target.closest('#helpPanel')) $('#helpPanel').style.display = 'none'; });
+document.addEventListener('keydown', e => { if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('#lighttable').style.display !== 'none') { e.preventDefault(); $('#fq').focus(); } });
 $('#scan').onclick = async () => {
   $('#scan').textContent = 'Scanne…';
   try { const s = await (await api('/api/scan', {method:'POST'})).json();
@@ -213,7 +262,34 @@ $('#match').onclick = async () => {
   pollMatch();
 };
 pollMatch();
-$('#ai').onclick = () => alert('KI-Funktionen (automatisch taggen u. a.) folgen im nächsten Schritt.');
+// ---------- Hintergrundjob: KI-Tags ----------
+let tagTimer = null;
+async function pollTag() {
+  clearTimeout(tagTimer);
+  try {
+    const st = await (await api('/api/jobs/tag')).json();
+    $('#ai').textContent = st.running ? `KI-Tags ${st.done}/${st.total} ■` : 'KI-Tags'; $('#ai').classList.toggle('on', st.running);
+    if (st.running) {
+      tagTimer = setTimeout(pollTag, 2000);
+      if (st.done && st.done % 5 === 0) { loadFacets().catch(() => {}); }
+    } else if (st.total) {
+      await loadFacets().catch(() => {}); await loadGrid();
+      $('#count').textContent = `KI-Tags fertig: ${st.getaggt} Fotos getaggt` + (st.fehler ? `, ${st.fehler} Fehler (${st.meldung})` : '');
+    }
+  } catch (e) {}
+}
+$('#ai').onclick = async () => {
+  const st = await (await api('/api/jobs/tag')).json();
+  if (st.running) { await api('/api/jobs/tag', {method:'DELETE'}); pollTag(); return; }
+  const ids = [...document.querySelectorAll('#grid .card')].map(c => c.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`${ids.length} angezeigte Fotos automatisch taggen?\n\nDabei wird pro Foto das Vorschaubild (ca. 640 px) an den eingestellten KI-Anbieter gesendet (Claude: Anthropic; mit Ollama bleibt alles im eigenen Netz). Bereits getaggte Fotos werden übersprungen.`)) return;
+  const r = await (await api('/api/jobs/tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ids})})).json();
+  if (!r.gestartet) { $('#count').textContent = r.meldung || 'KI-Tagging konnte nicht gestartet werden.'; return; }
+  if (!r.total) { $('#count').textContent = 'Nichts zu tun: alle angezeigten Fotos sind bereits getaggt.'; return; }
+  pollTag();
+};
+pollTag();
 $('#exportXmp').onclick = async () => {
   if (!confirm('XMP-Dateien für alle Fotos neben die Originale schreiben? Bestehende XMPs werden als .bak gesichert.')) return;
   const r = await (await api('/api/export-xmp', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})).json();
@@ -225,6 +301,7 @@ function show(view) {
   $('#lighttable').style.display = view === 'light' ? 'flex' : 'none';
   $('#dark').style.display = view === 'dark' ? 'block' : 'none';
   $('#lightTools').style.display = view === 'light' ? '' : 'none';
+  $('#searchWrap').style.display = view === 'light' ? '' : 'none';
   $('#tabLight').classList.toggle('on', view === 'light');
   $('#tabDark').classList.toggle('on', view === 'dark');
 }

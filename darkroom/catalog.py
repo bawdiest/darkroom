@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 import sqlite3
 from pathlib import Path
@@ -21,6 +22,7 @@ PRESETS_DIR = DATA / "presets"  # gehoert ins Git-Repo
 SCRIPTS_DIR = DATA / "scripts"  # ein Script pro Foto, gehoert ins Git-Repo
 SCRIPT_PRESETS_DIR = DATA / "script_presets"
 EXPORTS_DIR = DATA / "exports"
+AI_TAGS_DIR = DATA / "ai_tags"  # ein JSON pro Foto mit den KI-Tags (gehört ins Git-Repo)
 THUMBS = DATA / "cache" / "thumbs"
 DB_PATH = DATA / "cache" / "index.db"
 
@@ -39,6 +41,9 @@ def db() -> sqlite3.Connection:
     c = sqlite3.connect(DB_PATH)
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
+    if "ai_tags" not in {r[1] for r in c.execute("PRAGMA table_info(photos)")}:  # Migration älterer Indizes
+        c.execute("ALTER TABLE photos ADD COLUMN ai_tags TEXT DEFAULT '[]'")
+        c.commit()
     return c
 
 
@@ -48,6 +53,28 @@ def photo_id(rel: str) -> str:
 
 def params_file(rel: str) -> Path:
     return PARAMS_DIR / (rel + ".yaml")
+
+
+def ai_tags_file(rel: str) -> Path:
+    return AI_TAGS_DIR / (rel + ".json")
+
+
+def read_ai_tags(rel: str) -> dict | None:
+    f = ai_tags_file(rel)
+    try:
+        return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    except (OSError, ValueError):
+        return None
+
+
+def write_ai_tags(pid: str, rel: str, tags: list[str], meta: dict) -> None:
+    """Schreibt die KI-Tags als JSON neben die Parameter und aktualisiert den Index."""
+    f = ai_tags_file(rel)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"tags": tags, **meta}, ensure_ascii=False, indent=2), encoding="utf-8")
+    con = db()
+    con.execute("UPDATE photos SET ai_tags=? WHERE id=?", (json.dumps(tags, ensure_ascii=False), pid))
+    con.commit()
 
 
 def script_file(rel: str) -> Path:
@@ -127,10 +154,11 @@ def scan(import_xmp: bool = True) -> dict:
                 params = load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR)
             ex = read_exif(path)
             make_thumb(path, pid, params)
+            ai = (read_ai_tags(rel) or {}).get("tags", [])  # vorhandene KI-Tags (z. B. aus dem Git-Repo) übernehmen
             con.execute(
-                "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags) VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags,ai_tags) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (pid, rel, ex["taken"], ex["camera"], ex["lens"], ex["iso"], ex["focal"],
-                 params.rating, json.dumps(params.tags, ensure_ascii=False)),
+                 params.rating, json.dumps(params.tags, ensure_ascii=False), json.dumps(ai, ensure_ascii=False)),
             )
             stats["neu"] += 1
         except Exception as e:  # ein defektes Foto soll den Scan nicht stoppen
@@ -190,23 +218,116 @@ def thumb_version(pid: str) -> int:
     return f.stat().st_mtime_ns // 1_000_000 if f.exists() else 0
 
 
-def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=None, limit=500) -> list[dict]:
-    """state: None/'' = alle, 'edited' = bearbeitet, 'script' = mit Script, 'unedited' = unbearbeitet."""
+MONTHS = {m: i + 1 for i, m in enumerate(
+    ["januar", "februar", "märz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"])}
+MONTHS.update({"maerz": 3, "jan": 1, "feb": 2, "mär": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dez": 12})
+KEYS = {
+    "tag": "tag", "tags": "tag", "kamera": "camera", "camera": "camera", "objektiv": "lens", "lens": "lens",
+    "datum": "date", "date": "date", "iso": "iso", "brennweite": "focal", "focal": "focal", "mm": "focal",
+    "bewertung": "rating", "rating": "rating", "sterne": "rating", "name": "name", "datei": "name", "file": "name",
+    "ordner": "name", "pfad": "name", "status": "status", "ist": "status",
+}
+_TOKEN = re.compile(r'(-)?(?:([A-Za-zÄÖÜäöüß]+):)?("[^"]*"|\S+)')
+_DATE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+
+
+def parse_query(q: str) -> list[dict]:
+    """Zerlegt die Suche in Bedingungen. Beispiele: `berge 2024 canon`, `tag:Portrait kamera:r5 datum:2024-05..2024-08`,
+    `iso:>=1600 brennweite:24-70 bewertung:>=3`, `-tag:Auto`, `ist:bearbeitet`, `"Canon EOS R5"`."""
+    conds = []
+    for neg, key, val in _TOKEN.findall(q or ""):
+        val = val.strip('"').strip()
+        if not val:
+            continue
+        k = KEYS.get(key.lower()) if key else None
+        if key and not k:  # unbekannter Schlüssel: als normaler Text behandeln (z. B. «12:30»)
+            val, k = f"{key}:{val}", None
+        conds.append({"neg": bool(neg), "key": k, "val": val})
+    return conds
+
+
+def _num_match(spec: str, x) -> bool:
+    """spec: 100, >=1600, <400, 24-70 oder 24..70. Ohne Wert im Foto: kein Treffer."""
+    if x is None:
+        return False
+    m = re.fullmatch(r"\s*(>=|<=|>|<|=)?\s*(-?\d+(?:[.,]\d+)?)\s*", spec)
+    if m:
+        v = float(m.group(2).replace(",", "."))
+        return {None: x == v, "=": x == v, ">": x > v, "<": x < v, ">=": x >= v, "<=": x <= v}[m.group(1)]
+    m = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(?:-|\.\.)\s*(\d+(?:[.,]\d+)?)\s*", spec)
+    if m:
+        lo, hi = (float(g.replace(",", ".")) for g in m.groups())
+        return lo <= x <= hi
+    return False
+
+
+def _date_match(spec: str, taken: str | None) -> bool:
+    if not taken:
+        return False
+    d = taken[:10]
+    m = re.fullmatch(r"(\d{4}(?:-\d{2}(?:-\d{2})?)?)\.\.(\d{4}(?:-\d{2}(?:-\d{2})?)?)", spec)
+    if m:
+        lo, hi = m.groups()
+        return lo <= d[: len(lo)] and d[: len(hi)] <= hi
+    if spec.lower() in MONTHS:
+        return int(d[5:7] or 0) == MONTHS[spec.lower()]
+    return _DATE.match(spec) is not None and d.startswith(spec)
+
+
+def _matches(row: dict, conds: list[dict], state: dict) -> bool:
+    hay = " ".join(filter(None, [row["path"], row.get("camera"), row.get("lens"), row.get("taken"),
+                                 *row["tags"], *row["ai_tags"]])).casefold()
+    tags = [t.casefold() for t in (*row["tags"], *row["ai_tags"])]
+    for c in conds:
+        v, k = c["val"], c["key"]
+        vl = v.casefold()
+        if k == "tag":
+            ok = any(vl in t for t in tags)
+        elif k == "camera":
+            ok = vl in (row.get("camera") or "").casefold()
+        elif k == "lens":
+            ok = vl in (row.get("lens") or "").casefold()
+        elif k == "date":
+            ok = _date_match(v, row.get("taken"))
+        elif k == "iso":
+            ok = _num_match(v, row.get("iso"))
+        elif k == "focal":
+            ok = _num_match(v, row.get("focal"))
+        elif k == "rating":
+            ok = _num_match(v, row.get("rating"))
+        elif k == "name":
+            ok = vl in row["path"].casefold()
+        elif k == "status":
+            ok = {"bearbeitet": state["edited"] or state["manual_script"], "unbearbeitet": not (state["edited"] or state["manual_script"]),
+                  "script": state["has_script"], "ki": bool(row["ai_tags"]), "getaggt": bool(row["ai_tags"]),
+                  "ungetaggt": not row["ai_tags"]}.get(vl, False)
+        else:  # freier Text: Fotoname, Tags, Kamera, Objektiv, Datum; Jahre/Monate auch als Datum
+            ok = vl in hay or _date_match(v, row.get("taken"))
+        if ok == c["neg"]:
+            return False
+    return True
+
+
+def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=None, limit=2000) -> list[dict]:
+    """q: Suchtext (siehe parse_query). state: None/'' = alle, 'edited', 'script', 'unedited'."""
     sql, args = "SELECT * FROM photos WHERE rating>=?", [min_rating]
     if camera:
         sql += " AND camera=?"; args.append(camera)
     if lens:
         sql += " AND lens=?"; args.append(lens)
-    if tag:
-        sql += " AND tags LIKE ?"; args.append(f'%"{tag}"%')
-    if q:
-        sql += " AND (path LIKE ? OR tags LIKE ?)"; args += [f"%{q}%", f"%{q}%"]
     sql += " ORDER BY taken DESC, path"
+    conds = parse_query(q) if q else []
     out = []
     for r in db().execute(sql, args):
-        d = dict(r) | {"tags": json.loads(r["tags"])} | edit_state(r["path"]) | {"thumb_v": thumb_version(r["id"])}
-        d["thumb_stale"] = (d["edited"] or (d["has_script"] and not d["auto_script"])) and thumb_stale(r["path"], r["id"])
-        manual_script = d["has_script"] and not d["auto_script"]  # Auto-Script zählt nicht als Bearbeitung
+        d = dict(r) | {"tags": json.loads(r["tags"]), "ai_tags": json.loads(r["ai_tags"] or "[]")}
+        if tag and tag not in d["tags"] and tag not in d["ai_tags"]:
+            continue
+        d |= edit_state(r["path"]) | {"thumb_v": thumb_version(r["id"])}
+        d["manual_script"] = d["has_script"] and not d["auto_script"]
+        if conds and not _matches(d, conds, d):
+            continue
+        d["thumb_stale"] = (d["edited"] or d["manual_script"]) and thumb_stale(r["path"], r["id"])
+        manual_script = d["manual_script"]  # Auto-Script zählt nicht als Bearbeitung
         if state == "edited" and not (d["edited"] or manual_script):
             continue
         if state == "script" and not d["has_script"]:
@@ -222,5 +343,8 @@ def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=No
 def facets() -> dict:
     con = db()
     col = lambda c: [r[0] for r in con.execute(f"SELECT DISTINCT {c} FROM photos WHERE {c} IS NOT NULL ORDER BY 1")]
-    tags = sorted({t for (j,) in con.execute("SELECT tags FROM photos") for t in json.loads(j)})
-    return {"cameras": col("camera"), "lenses": col("lens"), "tags": tags}
+    counts: dict[str, int] = {}
+    for tags, ai in con.execute("SELECT tags, ai_tags FROM photos"):
+        for t in {*json.loads(tags), *json.loads(ai or "[]")}:
+            counts[t] = counts.get(t, 0) + 1
+    return {"cameras": col("camera"), "lenses": col("lens"), "tags": sorted(counts), "tag_counts": counts}
