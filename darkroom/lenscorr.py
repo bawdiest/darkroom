@@ -13,8 +13,10 @@ import numpy as np
 
 try:
     import lensfunpy
-except ImportError:  # noqa: SIM105
+    IMPORT_ERROR = None
+except Exception as e:  # noqa: BLE001 - ImportError, aber auch fehlende Systembibliotheken (OSError)
     lensfunpy = None
+    IMPORT_ERROR = f"{type(e).__name__}: {e}"
 
 
 @lru_cache(maxsize=256)
@@ -48,7 +50,9 @@ def _db():
 def find_profile(path: Path) -> dict:
     """Gibt {'ok', 'message', 'cam', 'lens', 'focal', 'aperture', 'distance'} zurück."""
     if lensfunpy is None:
-        return {"ok": False, "message": "Objektivkorrektur: lensfunpy ist nicht installiert"}
+        why = f" ({IMPORT_ERROR})" if IMPORT_ERROR and "No module named" not in IMPORT_ERROR else ""
+        return {"ok": False, "message": "Objektivkorrektur: lensfunpy ist nicht installiert" + why
+                + ("" if why else " (Image neu bauen: Portainer «Pull and redeploy» mit Neubau)")}
     ex = _exif(str(path), path.stat().st_mtime_ns if path.exists() else 0)
     if not (ex["make"] and ex["model"]):
         return {"ok": False, "message": "Objektivkorrektur: Kamera in den EXIF-Daten nicht gefunden"}

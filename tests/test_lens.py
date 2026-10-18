@@ -76,6 +76,9 @@ class Lens(unittest.TestCase):
     def test_without_lensfunpy(self):
         with mock.patch.object(lenscorr, "lensfunpy", None):
             self.assertIn("nicht installiert", lenscorr.status(self.path))
+        with mock.patch.object(lenscorr, "lensfunpy", None), mock.patch.object(lenscorr, "IMPORT_ERROR", "OSError: libfoo.so fehlt"):
+            self.assertIn("libfoo.so fehlt", lenscorr.status(self.path))
+        with mock.patch.object(lenscorr, "lensfunpy", None):
             np.testing.assert_array_equal(lenscorr.apply(self.img, self.path, LensProfile(enabled=True)), self.img)
 
 
