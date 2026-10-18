@@ -18,11 +18,13 @@
   #filters { width:210px; padding:12px; border-right:1px solid var(--line); overflow:auto; display:flex; flex-direction:column; gap:10px; }
   #filters label { color:var(--mute); font-size:12px; display:block; margin-bottom:3px; }
   #filters select, #filters input { width:100%; }
-  #grid { flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; align-content:start; }
+  #grid { --cell:220px; flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,var(--cell)); justify-content:start; gap:10px; align-content:start; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
   .card:hover { border-color:var(--acc); }
-  .card img { width:100%; aspect-ratio:3/2; object-fit:cover; display:block; background:#111; }
-  .card .meta { padding:5px 8px; font-size:12px; color:var(--mute); display:flex; justify-content:space-between; white-space:nowrap; overflow:hidden; }
+  .card img { width:100%; aspect-ratio:4/3; object-fit:contain; display:block; background:#111; }  /* ganzes Foto, nie beschnitten */
+  .card .meta { padding:5px 8px; font-size:12px; color:var(--mute); display:flex; justify-content:space-between; gap:6px; white-space:nowrap; overflow:hidden; }
+  .card .meta span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .card .meta span:last-child { flex:none; }
   #dark { flex:1; display:none; min-width:0; }
   #preview { flex:1; display:flex; align-items:center; justify-content:center; background:#111; min-width:0; position:relative; }
   #preview img { max-width:100%; max-height:100%; }
@@ -60,6 +62,8 @@
       <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
       <div><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
+      <div><label>Grösse der Vorschau <span id="sizeVal" style="float:right"></span></label>
+        <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
       <div id="count" style="color:var(--mute)"></div>
     </aside>
     <div id="grid"></div>
@@ -254,6 +258,17 @@ $('#savePreset').onclick = async () => {
     alert('Preset gespeichert: ' + r.name); const sel = $('#presetSel'); sel.add(new Option(r.name, r.name)); }
   catch (e) { alert(e.message); }
 };
+
+// Vorschaugrösse (wie in darktable): Regler und Strg + Mausrad, wird im Browser gemerkt
+function setSize(v, save = true) {
+  v = Math.max(100, Math.min(520, Math.round(v / 10) * 10));
+  $('#grid').style.setProperty('--cell', v + 'px'); $('#size').value = v; $('#sizeVal').textContent = v + ' px';
+  if (save) { try { localStorage.setItem('darkroom.cell', v); } catch (e) {} }
+}
+let savedSize = 220; try { savedSize = parseInt(localStorage.getItem('darkroom.cell')) || 220; } catch (e) {}
+setSize(savedSize, false);
+$('#size').addEventListener('input', e => setSize(+e.target.value));
+$('#grid').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); setSize(+$('#size').value + (e.deltaY < 0 ? 20 : -20)); } }, {passive:false});
 
 loadFacets(); loadGrid();
 </script>

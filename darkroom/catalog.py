@@ -24,6 +24,8 @@ EXPORTS_DIR = DATA / "exports"
 THUMBS = DATA / "cache" / "thumbs"
 DB_PATH = DATA / "cache" / "index.db"
 
+THUMB_SIZE = 640  # lange Seite der Vorschaubilder in Pixeln
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS photos(
   id TEXT PRIMARY KEY, path TEXT UNIQUE, taken TEXT, camera TEXT, lens TEXT,
@@ -89,9 +91,9 @@ def make_thumb(path: Path, pid: str, p: Params) -> None:
         except Exception:
             rgb = None
     if rgb is None:
-        rgb = render(path, p, max_side=400)
+        rgb = render(path, p, max_side=THUMB_SIZE)
     h, w = rgb.shape[:2]
-    f = 400 / max(h, w)
+    f = THUMB_SIZE / max(h, w)
     if f < 1:
         rgb = cv2.resize(rgb, (int(w * f), int(h * f)), interpolation=cv2.INTER_AREA)
     target.write_bytes(to_jpeg(rgb, 82))
