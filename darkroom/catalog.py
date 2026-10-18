@@ -146,12 +146,13 @@ def sync_index(pid: str, p: Params) -> None:
 
 
 _STATE_CACHE: dict = {}
-_NOT_EDIT = {"preset", "rating", "label", "tags", "_unmapped"}
+_NOT_EDIT = {"preset", "rating", "label", "tags", "_unmapped", "auto_match"}
 
 
 def is_edited(p: Params) -> bool:
     """True, wenn mindestens ein Bildparameter vom Standard abweicht (Bewertung, Label, Tags zählen nicht)."""
-    cur, base = p.model_dump(exclude_none=True), Params().model_dump(exclude_none=True)
+    start = Params(**((p.auto_match or {}).get("params") or {}))  # vom Angleich-Job gesetzte Werte zählen nicht als Bearbeitung
+    cur, base = p.model_dump(exclude_none=True), start.model_dump(exclude_none=True)
     strip = lambda d: {k: v for k, v in d.items() if k not in _NOT_EDIT}
     return strip(cur) != strip(base)
 

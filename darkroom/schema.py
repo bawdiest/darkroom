@@ -53,6 +53,7 @@ class Params(BaseModel):
     rating: int = Field(0, ge=0, le=5)
     label: Optional[str] = None
     tags: list[str] = []
+    auto_match: Optional[dict] = None  # Marker des Hintergrundjobs «Angleichen»; siehe automatch.py
 
 
 def _merge(base: dict, over: dict) -> dict:

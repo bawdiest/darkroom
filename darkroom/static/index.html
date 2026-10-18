@@ -61,6 +61,7 @@
   <span class="spacer"></span>
   <span id="lightTools">
     <button id="scan">Bibliothek scannen</button>
+    <button id="match" title="Unbearbeitete RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen. Klick während des Laufs stoppt den Job.">Angleichen</button>
     <button id="ai" title="KI-Funktionen folgen">KI ▾</button>
     <button id="exportXmp">XMP exportieren</button>
   </span>
@@ -180,6 +181,34 @@ $('#scan').onclick = async () => {
   catch (e) { alert(e.message); }
   $('#scan').textContent = 'Bibliothek scannen'; await loadFacets(); await loadGrid();
 };
+// ---------- Hintergrundjob: Angleichen an das Kamera-Vorschaubild ----------
+let matchTimer = null;
+function matchLabel(st) {
+  return st.running ? `Angleichen ${st.done}/${st.total} ■` : 'Angleichen';
+}
+async function pollMatch() {
+  clearTimeout(matchTimer);
+  try {
+    const st = await (await api('/api/jobs/match')).json();
+    $('#match').textContent = matchLabel(st); $('#match').classList.toggle('on', st.running);
+    $('#match').title = st.running ? `Läuft: ${st.aktuell}. Klick = stoppen.` : $('#match').title;
+    if (st.running) { matchTimer = setTimeout(pollMatch, 2000); if (st.done % 5 === 0) refreshCards().catch(() => {}); }
+    else if (st.total) {
+      await refreshCards().catch(() => {});
+      $('#count').textContent = `Angleichen fertig: ${st.angeglichen} angeglichen, ${st.uebersprungen} übersprungen` + (st.fehler ? `, ${st.fehler} Fehler` : '');
+    }
+  } catch (e) {}
+}
+$('#match').onclick = async () => {
+  const st = await (await api('/api/jobs/match')).json();
+  if (st.running) { await api('/api/jobs/match', {method:'DELETE'}); }
+  else {
+    const r = await (await api('/api/jobs/match', {method:'POST'})).json();
+    if (!r.total) { $('#count').textContent = 'Nichts zu tun: alle Fotos sind bearbeitet oder bereits angeglichen.'; return; }
+  }
+  pollMatch();
+};
+pollMatch();
 $('#ai').onclick = () => alert('KI-Funktionen (automatisch taggen u. a.) folgen im nächsten Schritt.');
 $('#exportXmp').onclick = async () => {
   if (!confirm('XMP-Dateien für alle Fotos neben die Originale schreiben? Bestehende XMPs werden als .bak gesichert.')) return;

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import ai, catalog, policy, sandbox
+from . import ai, automatch, catalog, policy, sandbox
 from .checks import ScriptError
 from .output import encode, load_profiles
 from .render import develop, to_jpeg, to_uint8
@@ -39,6 +39,7 @@ def _parse(text: str) -> Params:
 def _script_params(p: Params, scale: float) -> dict:
     d = p.model_dump(exclude_none=True)
     d.pop("_unmapped", None)
+    d.pop("auto_match", None)
     d["_scale"] = round(float(scale), 6)
     return d
 
@@ -106,6 +107,23 @@ def photos(bg: BackgroundTasks, q: str | None = None, camera: str | None = None,
         _queued.add(pid)
         bg.add_task(_refresh_and_unqueue, pid)
     return out
+
+
+@app.post("/api/jobs/match")
+def match_start():
+    """Startet den Hintergrundjob, der unbearbeitete RAWs an das eingebettete Kamera-Vorschaubild angleicht."""
+    return {"gestartet": automatch.JOB.start(), **automatch.JOB.state}
+
+
+@app.get("/api/jobs/match")
+def match_state():
+    return automatch.JOB.state
+
+
+@app.delete("/api/jobs/match")
+def match_stop():
+    automatch.JOB.stop()
+    return automatch.JOB.state
 
 
 @app.get("/api/facets")
@@ -186,7 +204,7 @@ def _safe_name(name: str) -> str:
 def save_preset(body: PresetBody):
     name = _safe_name(body.name)
     data = yaml.safe_load(body.yaml) or {}
-    for k in ("preset", "_unmapped", "rating", "tags"):
+    for k in ("preset", "_unmapped", "rating", "tags", "auto_match"):
         data.pop(k, None)
     catalog.PRESETS_DIR.mkdir(parents=True, exist_ok=True)
     (catalog.PRESETS_DIR / f"{name}.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
