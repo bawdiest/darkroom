@@ -40,8 +40,22 @@ def _works(cmd: list[str]) -> bool:
 
 
 @lru_cache(maxsize=1)
+def _bwrap_variant() -> str | None:
+    """'proc' (mit neuem /proc), 'noproc' (ohne; nötig in Docker, wo /proc teilweise maskiert ist) oder None.
+    DARKROOM_BWRAP_PROC=0 erzwingt 'noproc'."""
+    if not shutil.which("bwrap"):
+        return None
+    for with_proc in ((True, False) if os.environ.get("DARKROOM_BWRAP_PROC") != "0" else (False,)):
+        cmd = ["bwrap", "--unshare-all", "--ro-bind", "/", "/", "--dev", "/dev"]
+        cmd += ["--proc", "/proc"] if with_proc else []
+        if _works(cmd + ["true"]):
+            return "proc" if with_proc else "noproc"
+    return None
+
+
+@lru_cache(maxsize=1)
 def detect_level() -> str:
-    if shutil.which("bwrap") and _works(["bwrap", "--unshare-all", "--ro-bind", "/", "/", "true"]):
+    if _bwrap_variant():
         return "bwrap"
     if shutil.which("unshare") and _works(["unshare", "-n", "true"] if os.geteuid() == 0 else ["unshare", "-rn", "true"]):
         return "unshare"
@@ -82,7 +96,7 @@ def _bwrap_prefix(job: Path) -> list[str]:
             ro(os.path.realpath(p) if os.path.isdir(p) else "")
     return [
         "bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv",
-        *binds, "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+        *binds, *(["--proc", "/proc"] if _bwrap_variant() == "proc" else []), "--dev", "/dev", "--tmpfs", "/tmp",
         "--bind", str(job), "/job", "--ro-bind", str(RUNNER), "/runner.py", "--chdir", "/job",
         "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "HOME", "/tmp",
     ]

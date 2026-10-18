@@ -7,11 +7,21 @@ Scripts laufen isoliert; die Ausgabedatei erzeugt immer der Server nach einem Au
 ## Start
 
 ```bash
-cp .env.example .env        # ANTHROPIC_API_KEY eintragen
-# docker-compose.yml: /pfad/zu/deinen/fotos anpassen
+cp .env.example .env        # DARKROOM_LIBRARY_PATH und ANTHROPIC_API_KEY eintragen
 docker compose up --build   # http://localhost:8000  ->  "Bibliothek scannen"
-cd data && git init         # Parameter, Scripts, Presets versionieren
 ```
+
+### Deploy mit Portainer (Stack aus Git-Repository)
+
+1. *Stacks → Add stack → Repository*. URL `https://gitlab.mikmak.cc/<benutzer>/darkroom.git`, Branch `main`,
+   Compose-Pfad `docker-compose.yml`. Für ein privates Repo *Authentication* aktivieren (Benutzer + Token mit `read_repository`).
+2. *Environment variables*: `DARKROOM_LIBRARY_PATH` (Pflicht), `ANTHROPIC_API_KEY`, optional `DARKROOM_DATA_PATH`, `DARKROOM_PORT`.
+   Ohne `DARKROOM_DATA_PATH` liegen Parameter und Scripts in einem Docker-Volume `darkroom-data` (Backup nicht vergessen).
+3. *Deploy the stack*. Portainer baut das Image aus dem Repo. Mit *GitOps updates* (Polling oder Webhook von GitLab) wird bei jedem Push neu gebaut.
+4. Prüfen: Statuszeile in der Dunkelkammer muss **Sandbox: voll** zeigen, sonst sind Scripts gesperrt (siehe Abschnitt Sandbox).
+
+Die App hat **keine Anmeldung**. Betreibe sie nur im eigenen Netz/VPN oder hinter einem Reverse Proxy mit Authentifizierung,
+denn sie kann Dateien in der Foto-Bibliothek schreiben und den KI-Schlüssel nutzen.
 
 Ohne Docker (z. B. Bazzite/Fedora, bubblewrap ist dort meist schon da):
 
@@ -59,6 +69,7 @@ Das Script bekommt nur ein temporäres Job-Verzeichnis mit dem einen Foto (als A
 | `unshare` | nur Netzwerk getrennt; Dateizugriff nur durch statische Prüfung und eingeschränkte Builtins | Fallback |
 | `none` | keine Isolation | nie ohne ausdrückliche Einstellung |
 
+In Docker braucht `bwrap` die `security_opt`-Einträge der `docker-compose.yml`; ohne `/proc`-Neumontage (in Docker maskiert) arbeitet es automatisch weiter, erzwingbar mit `DARKROOM_BWRAP_PROC=0`.
 Standardmässig laufen Scripts **nur mit `bwrap`**. Die Statuszeile in der Dunkelkammer zeigt die aktive Stufe.
 `DARKROOM_SANDBOX_MIN=unshare` erlaubt den Fallback bewusst. Die statische Prüfung ist Komfort, kein Schutz.
 

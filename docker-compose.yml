@@ -1,21 +1,41 @@
+# Für Portainer (Stack aus Git-Repository) und für `docker compose up`.
+# Variablen setzt du in Portainer unter "Environment variables" bzw. lokal in einer .env-Datei:
+#   DARKROOM_LIBRARY_PATH  (Pflicht)  Host-Ordner mit den RAW-Fotos
+#   DARKROOM_DATA_PATH     (optional) Host-Ordner für Parameter/Scripts/Presets; sonst ein benanntes Volume
+#   ANTHROPIC_API_KEY      (für die KI) bzw. DARKROOM_AI_PROVIDER=ollama + OLLAMA_URL / OLLAMA_MODEL
 services:
   darkroom:
     build: .
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    env_file:
-      - .env            # ANTHROPIC_API_KEY=... (Vorlage: .env.example)
+      - "${DARKROOM_PORT:-8000}:8000"
     environment:
-      # DARKROOM_AI_PROVIDER: claude        # oder: ollama (dann OLLAMA_URL / OLLAMA_MODEL setzen)
-      # DARKROOM_SANDBOX_MIN: bwrap         # nur senken, wenn du weisst, was du tust (unshare | none)
       DARKROOM_LIBRARY: /library
       DARKROOM_DATA: /data
-    # bubblewrap braucht in Docker unprivilegierte User-Namespaces. Wenn die Statuszeile in der Dunkelkammer
-    # "Sandbox: keine Isolation" oder "teilweise" zeigt, diese beiden Zeilen aktivieren (nicht getestet):
-    # security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DARKROOM_AI_PROVIDER: ${DARKROOM_AI_PROVIDER:-claude}
+      DARKROOM_AI_MODEL: ${DARKROOM_AI_MODEL:-claude-sonnet-5-5}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:14b}
+      # Sandbox-Mindeststufe für Scripts: bwrap (Standard) | unshare | none. Nur senken, wenn du weisst, was du tust.
+      DARKROOM_SANDBOX_MIN: ${DARKROOM_SANDBOX_MIN:-bwrap}
+    # bubblewrap (Sandbox für Scripts) braucht in Docker unprivilegierte User-Namespaces, die Docker standardmässig
+    # blockiert. Diese beiden Einträge erlauben das nur für diesen Container. NICHT GETESTET: Die Statuszeile in der
+    # Dunkelkammer zeigt nach dem Deploy "Sandbox: voll", sonst bleiben Scripts gesperrt (Parameter und Export gehen trotzdem).
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     volumes:
-      # Foto-Bibliothek (RAWs + vorhandene XMPs). Originale werden nie veraendert,
-      # nur der XMP-Export schreibt <RAW>.xmp daneben (vorher .bak-Sicherung).
-      - /pfad/zu/deinen/fotos:/library
-      # Parameter, Scripts, Presets: als Git-Repo fuehren (git init in ./data)
-      - ./data:/data
+      # Originale werden nie verändert; nur der XMP-Export schreibt <RAW>.xmp daneben (vorher .bak-Sicherung).
+      - ${DARKROOM_LIBRARY_PATH:?Bitte DARKROOM_LIBRARY_PATH setzen (Ordner mit den RAW-Fotos)}:/library
+      - ${DARKROOM_DATA_PATH:-darkroom-data}:/data
+
+volumes:
+  darkroom-data:
