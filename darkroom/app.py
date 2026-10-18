@@ -7,7 +7,7 @@ import yaml
 import threading
 from urllib.parse import quote
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
@@ -21,6 +21,11 @@ from .xmp import write_xmp
 
 app = FastAPI(title="Darkroom")
 STATIC = Path(__file__).parent / "static"
+
+
+def _plain(p: Params, script: str) -> bool:
+    """Unbearbeitet: keine eigenen Änderungen und kein selbst geschriebenes Script (Auto-Script zählt nicht)."""
+    return not catalog.is_edited(p) and (not script.strip() or script.lstrip().startswith("# auto_match"))
 
 
 def _photo(pid: str):
@@ -47,7 +52,7 @@ def _script_params(p: Params, scale: float) -> dict:
 
 def _develop_with_script(row, p: Params, script: str | None, max_side: int | None, timeout: float):
     """RAW + Parameter -> Bild, danach optional das Script in der Sandbox."""
-    img, scale = develop(catalog.LIBRARY / row["path"], p, max_side)
+    img, scale = develop(catalog.raw_path(row), p, max_side)
     if script and script.strip():
         try:
             img = sandbox.run_script(script, img, _script_params(p, scale), timeout=timeout)
@@ -77,8 +82,8 @@ def _refresh_thumb(pid: str) -> None:
             pf, sf = catalog.params_file(row["path"]), catalog.script_file(row["path"])
             p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
             script = sf.read_text(encoding="utf-8") if sf.exists() else ""
-            path = catalog.LIBRARY / row["path"]
-            if not catalog.is_edited(p) and (not script.strip() or script.lstrip().startswith("# auto_match")):
+            path = catalog.raw_path(row)
+            if _plain(p, script):
                 catalog.make_thumb(path, pid, p, original=True)
                 return
             img, scale = develop(path, p, catalog.THUMB_SIZE)
@@ -101,8 +106,9 @@ def status():
 
 @app.get("/api/photos")
 def photos(bg: BackgroundTasks, q: str | None = None, camera: str | None = None, lens: str | None = None,
-           min_rating: int = 0, tag: str | None = None, state: str | None = None):
-    out = catalog.list_photos(q, camera, lens, min_rating, tag, state)
+           min_rating: int = 0, tag: str | None = None, state: str | None = None,
+           roll: str | None = None, date: str | None = None, catalog_name: str | None = Query(None, alias="catalog")):
+    out = catalog.list_photos(q, camera, lens, min_rating, tag, state, roll=roll, date=date, catalog=catalog_name)
     stale = [d["id"] for d in out if d["thumb_stale"] and d["id"] not in _queued]
     for pid in stale[:12]:  # veraltete Vorschaubilder nach und nach im Hintergrund erneuern
         _queued.add(pid)
@@ -159,9 +165,31 @@ def facets():
     return catalog.facets()
 
 
+class ScanBody(BaseModel):
+    roll: str | None = None
+
+
 @app.post("/api/scan")
-def scan():
-    return catalog.scan()
+def scan(b: ScanBody | None = None):
+    """Importiert neue Fotos; alle neuen kommen in die Filmrolle `roll` (Standard: «Import <Datum Uhrzeit>»)."""
+    try:
+        return catalog.scan(roll=b.roll if b else None)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+class OrganizeBody(BaseModel):
+    dry_run: bool = True
+    ids: list[str] | None = None
+
+
+@app.post("/api/organize")
+def organize(b: OrganizeBody):
+    """Ordnet die Bibliothek auf dem Laufwerk nach Jahr/Monat/Tag (Aufnahmedatum). dry_run zeigt nur den Plan."""
+    if b.dry_run:
+        plan = catalog.organize_plan()
+        return {"anzahl": len(plan["verschieben"]), "ohne_datum": len(plan["ohne_datum"]), "beispiele": plan["verschieben"][:8]}
+    return catalog.organize(b.ids)
 
 
 @app.get("/api/thumb/{pid}")
@@ -170,6 +198,145 @@ def thumb(pid: str):
     if not f.exists():
         raise HTTPException(404)
     return FileResponse(f, headers={"Cache-Control": "max-age=3600"})
+
+
+# ---------- Lupe, Duplikate, Kataloge ----------
+@app.get("/api/photos/{pid}/info")
+def photo_info(pid: str):
+    _photo(pid)
+    return catalog.photo_info(pid)
+
+
+@app.get("/api/photos/{pid}/view")
+def photo_view(pid: str, max_side: int = Query(2400, ge=400, le=6000), original: bool = False):
+    """Grosse Ansicht für die Lupe: bearbeitet (Parameter + Script) oder mit original=1 das Kamera-Vorschaubild.
+    Wird zwischengespeichert und erneuert, sobald Parameter oder Script neuer sind."""
+    row = _photo(pid)
+    rel = row["path"]
+    cache = catalog.VIEWS / f"{pid}-{max_side}{'-o' if original else ''}.jpg"
+    newest = max((x.stat().st_mtime_ns for x in (catalog.params_file(rel), catalog.script_file(rel)) if x.exists()), default=0)
+    hdr = {"Cache-Control": "no-cache"}
+    if cache.exists() and (original or cache.stat().st_mtime_ns >= newest):
+        return FileResponse(cache, headers=hdr)
+    pf, sf = catalog.params_file(rel), catalog.script_file(rel)
+    p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
+    script = sf.read_text(encoding="utf-8") if sf.exists() else ""
+    path = catalog.raw_path(row)
+    rgb = catalog.embedded_rgb(path) if (original or _plain(p, script)) else None
+    if rgb is None:
+        if original:
+            img, _ = develop(path, Params(), max_side)  # Standardentwicklung, wenn kein eingebettetes Bild vorhanden ist
+            rgb = to_uint8(img)
+        else:
+            rgb = to_uint8(_develop_with_script(row, p, script, max_side, policy.PREVIEW_TIMEOUT))
+    h, w = rgb.shape[:2]
+    if max(h, w) > max_side:
+        import cv2
+
+        f = max_side / max(h, w)
+        rgb = cv2.resize(rgb, (int(w * f), int(h * f)), interpolation=cv2.INTER_AREA)
+    catalog.VIEWS.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(to_jpeg(rgb, 90))
+    return FileResponse(cache, headers=hdr)
+
+
+class MetaBody(BaseModel):
+    rating: int | None = None
+    tags: list[str] | None = None
+
+
+@app.put("/api/photos/{pid}/meta")
+def photo_meta(pid: str, body: MetaBody):
+    """Bewertung und eigene Tags setzen (schreibt in die YAML des Fotos, Kommentare bleiben erhalten)."""
+    _photo(pid)
+    try:
+        catalog.set_meta(pid, body.rating, body.tags)
+    except ValidationError as e:
+        raise HTTPException(422, str(e))
+    return catalog.photo_info(pid)
+
+
+@app.post("/api/photos/{pid}/duplicate")
+def duplicate(pid: str):
+    _photo(pid)
+    row = catalog.create_duplicate(pid)
+    return {"id": row["id"], "path": row["path"], "version": row["version"]}
+
+
+@app.delete("/api/photos/{pid}")
+def delete_photo(pid: str):
+    """Löscht ein Duplikat. Originale werden nie gelöscht."""
+    _photo(pid)
+    try:
+        catalog.delete_duplicate(pid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+class CatBody(BaseModel):
+    name: str
+    ids: list[str] | None = None
+    into: str | None = None
+    new_name: str | None = None
+
+
+def _cat(fn, *a):
+    try:
+        return fn(*a)
+    except KeyError as e:
+        raise HTTPException(404, f"Katalog {e} nicht gefunden")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/rolls/move")
+def roll_move(b: CatBody):
+    """Fotos in eine Filmrolle verschieben (wird angelegt, falls neu). name «Ohne Filmrolle» nimmt sie aus ihrer Rolle."""
+    return _cat(catalog.roll_move, b.name, b.ids)
+
+
+@app.post("/api/rolls/rename")
+def roll_rename(b: CatBody):
+    return {"name": _cat(catalog.roll_rename, b.name, b.new_name or "")}
+
+
+@app.post("/api/rolls/delete")
+def roll_delete(b: CatBody):
+    return {"fotos": _cat(catalog.roll_delete, b.name)}
+
+
+@app.get("/api/catalogs")
+def catalogs():
+    return catalog.facets()["catalogs"]
+
+
+@app.post("/api/catalogs/add")
+def catalog_add(b: CatBody):
+    """Legt den Katalog an (falls neu) und fügt die Fotos hinzu."""
+    return _cat(catalog.catalog_add, b.name, b.ids)
+
+
+@app.post("/api/catalogs/remove")
+def catalog_remove(b: CatBody):
+    return {"entfernt": _cat(catalog.catalog_remove, b.name, b.ids or [])}
+
+
+@app.post("/api/catalogs/rename")
+def catalog_rename(b: CatBody):
+    return {"name": _cat(catalog.catalog_rename, b.name, b.new_name or "")}
+
+
+@app.post("/api/catalogs/merge")
+def catalog_merge(b: CatBody):
+    """Führt den Katalog `name` in `into` zusammen (der erste verschwindet, die Fotos bleiben)."""
+    return _cat(catalog.catalog_merge, b.name, b.into or "")
+
+
+@app.post("/api/catalogs/delete")
+def catalog_delete(b: CatBody):
+    _cat(catalog.catalog_delete, b.name)
+    return {"ok": True}
 
 
 # ---------- Parameter ----------
@@ -199,7 +366,7 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
     if p.lens.enabled:
         from . import lenscorr
 
-        headers["X-Lens-Status"] = quote(lenscorr.vignette_report(catalog.LIBRARY / row["path"]) if p.lens.vignetting else lenscorr.status(catalog.LIBRARY / row["path"]))
+        headers["X-Lens-Status"] = quote(lenscorr.vignette_report(catalog.raw_path(row)) if p.lens.vignetting else lenscorr.status(catalog.raw_path(row)))
     return Response(to_jpeg(to_uint8(img)), media_type="image/jpeg", headers=headers)
 
 
@@ -326,7 +493,7 @@ def generate(pid: str, body: GenerateBody):
     p = _parse(body.yaml)
     try:
         provider = ai.get_provider()
-        test_img, scale = develop(catalog.LIBRARY / row["path"], p, 512)
+        test_img, scale = develop(catalog.raw_path(row), p, 512)
         return ai.generate_script(provider, body.prompt, body.yaml, body.script, test_img, _script_params(p, scale))
     except ai.AIError as e:
         raise HTTPException(503, str(e))
@@ -359,7 +526,7 @@ def export_photo(pid: str, body: ExportBody):
         data, ext = encode(img, prof)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    out = catalog.EXPORTS_DIR / body.profile / (Path(row["path"]).stem + "." + ext)
+    out = catalog.EXPORTS_DIR / body.profile / (catalog.export_stem(row) + "." + ext)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
     return FileResponse(out, filename=out.name)
@@ -375,11 +542,13 @@ def export_xmp(body: XmpBody):
     rows = [_photo(i) for i in body.ids] if body.ids else catalog.db().execute("SELECT * FROM photos").fetchall()
     n = mit_script = 0
     for row in rows:
+        if catalog.is_duplicate(row):  # eine XMP pro Datei; Duplikate haben keine eigene Datei
+            continue
         f = catalog.params_file(row["path"])
         if not f.exists():
             continue
         p = load_params(f.read_text(encoding="utf-8"), catalog.PRESETS_DIR)
-        out = (catalog.LIBRARY / row["path"]).with_name(Path(row["path"]).name + ".xmp")
+        out = (catalog.raw_path(row)).with_name(Path(row["path"]).name + ".xmp")
         if out.exists():
             bak = out.with_suffix(out.suffix + ".bak")
             if not bak.exists():

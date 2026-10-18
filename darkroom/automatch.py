@@ -211,10 +211,10 @@ def candidates(ids: list[str] | None = None) -> list[dict]:
     Nie: Fotos mit eigenen Änderungen oder mit einem selbst geschriebenen Script."""
     wanted = set(ids) if ids is not None else None
     out = []
-    for row in catalog.db().execute("SELECT id, path FROM photos ORDER BY path"):
+    for row in catalog.db().execute("SELECT id, path, source FROM photos ORDER BY path"):
         if wanted is not None and row["id"] not in wanted:
             continue
-        if Path(row["path"]).suffix.lower() not in RAW_EXT:
+        if catalog.raw_path(row).suffix.lower() not in RAW_EXT:
             continue
         st = catalog.edit_state(row["path"])
         if st["edited"] or (st["has_script"] and not st["auto_script"]):
@@ -291,7 +291,7 @@ class MatchJob:
                 self.state["aktuell"] = row["path"]
                 try:
                     stamp = _stamp(row["path"])
-                    res = fit_photo(catalog.LIBRARY / row["path"])
+                    res = fit_photo(catalog.raw_path(row))
                     if not apply_result(row, res, stamp):
                         pass  # inzwischen vom Benutzer geändert: nichts überschreiben
                     elif res["ok"]:

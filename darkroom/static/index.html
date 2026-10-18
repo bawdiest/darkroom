@@ -64,12 +64,59 @@
   #genStatus { font-size:12px; color:var(--mute); white-space:pre-wrap; }
   .foot { border-top:1px solid var(--line); border-bottom:0 !important; }
   #err { color:#ff7b72; padding:6px 12px; font-size:12px; min-height:26px; border-top:1px solid var(--line); white-space:pre-wrap; }
+  #filters { width:236px; flex:none; }
+  #lib label { color:var(--mute); font-size:12px; display:flex; justify-content:space-between; align-items:center; margin:10px 0 4px; }
+  #lib label:first-child { margin-top:0; }
+  .mini { padding:0 8px; line-height:20px; font-size:14px; }
+  .nav { padding:4px 8px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; gap:6px; align-items:center; white-space:nowrap; }
+  .nav span { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .nav:hover { background:#2e2e33; } .nav.on { background:var(--acc); color:#1b1b1d; }
+  .nav small { color:var(--mute); flex:none; } .nav.on small { color:#1b1b1d; }
+  #rolls, #cats { max-height:220px; overflow:auto; }
+  .none { color:var(--mute); font-size:12px; padding:2px 8px; }
+  #catTools, #rollTools { display:none; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  #catTools button, #catTools select, #rollTools button { font-size:12px; padding:3px 8px; }
+  #selbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px 0; font-size:12px; color:var(--mute); }
+  #selbar button, #selbar select { font-size:12px; padding:3px 9px; }
+  #selbar .grp { display:none; gap:8px; align-items:center; flex-wrap:wrap; }
+  .badge.dup { color:#6aa8ff; border-color:rgba(106,168,255,.6); }
+  .card.dup { border-style:dashed; border-color:#4d7fbf; }
+  .card.sel { outline:2px solid var(--acc); outline-offset:-1px; }
+  .card .chk { position:absolute; right:6px; top:6px; z-index:2; width:22px; height:22px; border-radius:50%; background:rgba(20,20,22,.7); border:1px solid var(--mute); display:none; align-items:center; justify-content:center; color:transparent; font-size:13px; }
+  .card:hover .chk, .card.sel .chk { display:flex; } .card.sel .chk { background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
+  #loupe { display:none; flex:1; min-width:0; min-height:0; }
+  #lmain { flex:1; min-width:0; display:flex; flex-direction:column; background:#0e0e10; }
+  #ltop { display:flex; gap:10px; align-items:center; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
+  #ltitle { font-weight:600; } #lpos { color:var(--mute); }
+  #lstage { flex:1; min-height:0; position:relative; }
+  #limg { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  #limg.lowres { opacity:.8; }
+  .arrow { position:absolute; top:50%; transform:translateY(-50%); z-index:2; font-size:34px; width:46px; height:84px; padding:0; background:rgba(20,20,22,.55); border:0; color:#fff; opacity:0; transition:opacity .15s; }
+  #lstage:hover .arrow { opacity:.85; } #lprev { left:8px; } #lnext { right:8px; }
+  #lstat { position:absolute; left:12px; bottom:10px; z-index:2; color:var(--mute); font-size:12px; text-shadow:0 0 4px #000; }
+  #lstrip { height:86px; flex:none; display:flex; gap:6px; overflow-x:auto; padding:7px 10px; background:var(--panel); border-top:1px solid var(--line); }
+  #lstrip img { height:100%; aspect-ratio:3/2; object-fit:cover; background:#111; border:2px solid transparent; border-radius:4px; cursor:pointer; flex:none; }
+  #lstrip img.on { border-color:var(--acc); } #lstrip img.dup { border-style:dashed; border-color:#4d7fbf; } #lstrip img.on.dup { border-color:var(--acc); }
+  #linfo { width:340px; flex:none; border-left:1px solid var(--line); background:var(--panel); overflow:auto; padding:14px; display:flex; flex-direction:column; gap:16px; }
+  #linfo h3 { margin:0 0 6px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); font-weight:600; }
+  #linfo .fname { font-size:16px; font-weight:600; word-break:break-all; }
+  #linfo dl { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:0; } #linfo dt { color:var(--mute); } #linfo dd { margin:0; word-break:break-word; }
+  .stars span { font-size:24px; cursor:pointer; color:#4a4a50; } .stars span.f { color:var(--acc); } .stars span:hover { color:var(--acc); }
+  .tags { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .tg { font-size:12px; padding:2px 9px; border-radius:12px; background:#2e2e33; border:1px solid var(--line); cursor:pointer; }
+  .tg.ai { border-style:dashed; } .tg.cat { border-color:#4d7fbf; } .tg b { margin-left:6px; color:var(--mute); font-weight:400; } .tg b:hover { color:#ff7b72; }
+  #linfo input.small, #linfo select { font-size:12px; padding:3px 8px; }
+  .vers { display:flex; flex-wrap:wrap; gap:6px; } .vers button.on { background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
+  .vers button.d { border-style:dashed; border-color:#4d7fbf; } .vers button.on.d { border-color:var(--acc); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; } .actions kbd { color:var(--mute); font-size:11px; margin-left:4px; }
+  #dtitle { position:absolute; left:10px; top:10px; z-index:2; font-size:12px; color:var(--mute); }
 </style>
 </head>
 <body>
 <header>
   <h1>DARKROOM</h1>
   <button id="tabLight" class="on">Leuchttisch</button>
+  <button id="tabLoupe" disabled>Lupe</button>
   <button id="tabDark" disabled>Dunkelkammer</button>
   <span id="searchWrap">
     <span class="ico">⌕</span>
@@ -87,6 +134,7 @@
   </span>
   <span id="lightTools" style="margin-left:auto">
     <button id="scan">Bibliothek scannen</button>
+    <button id="organize" title="Dateien in der Bibliothek auf dem Laufwerk nach Jahr/Monat/Tag (Aufnahmedatum) einsortieren">Ordnen</button>
     <button id="match" title="Die angezeigten (gefilterten) unbearbeiteten RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen (Tonwert-Parameter und Schärfung). Klick während des Laufs stoppt den Job.">Angleichen</button>
     <button id="ai" title="Die angezeigten Fotos per KI automatisch mit Tags versehen (Portrait, Landschaft, Auto …). Klick während des Laufs stoppt den Job.">KI-Tags</button>
     <button id="exportXmp">XMP exportieren</button>
@@ -95,6 +143,23 @@
 <main>
   <section id="lighttable" style="display:flex; flex:1; min-width:0;">
     <aside id="filters">
+      <div id="lib">
+        <label>Bibliothek</label>
+        <div class="nav" id="navAll"><span>▦ Alle Fotos</span><small id="nAll"></small></div>
+        <label>Filmrollen <button id="newRoll" class="mini" title="Neue leere Filmrolle anlegen">＋</button></label>
+        <div id="rolls"></div>
+        <div id="rollTools">
+          <button id="rollRename">Umbenennen</button><button id="rollDel" title="Nur die Rolle verschwindet, die Fotos bleiben (Ohne Filmrolle)">Löschen</button>
+        </div>
+        <label>Nach Datum <small title="Automatisch aus dem Aufnahmedatum">Jahr › Monat › Tag</small></label>
+        <div id="days"></div>
+        <label>Kataloge <button id="newCat" class="mini" title="Neuen leeren Katalog anlegen">＋</button></label>
+        <div id="cats"></div>
+        <div id="catTools">
+          <button id="catRename">Umbenennen</button><button id="catDel">Löschen</button>
+          <select id="catMerge" title="Diesen Katalog in einen anderen übernehmen"><option value="">Zusammenführen in …</option></select>
+        </div>
+      </div>
       <div><label>Kamera</label><select id="fcam"><option value="">alle</option></select></div>
       <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
@@ -104,11 +169,37 @@
         <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
       <div id="count" style="color:var(--mute)"></div>
     </aside>
-    <div id="gridWrap"><div id="chips"></div><div id="grid"></div></div>
+    <div id="gridWrap">
+      <div id="selbar"><span id="selInfo"></span><button id="selAll">Alle auswählen</button><button id="selNone">Auswahl aufheben</button>
+        <span class="grp" id="selActions">
+          <select id="selRoll" title="Jedes Foto liegt in genau einer Filmrolle"><option value="">In Filmrolle verschieben…</option></select>
+          <select id="selCat"><option value="">Zu Katalog hinzufügen…</option></select>
+          <button id="selDup" title="Für jedes ausgewählte Foto ein Duplikat (virtuelle Kopie) anlegen">Duplizieren</button>
+          <button id="selRemove">Aus Katalog entfernen</button>
+          <button id="selDel">Duplikate löschen</button>
+        </span></div>
+      <div id="chips"></div><div id="grid"></div></div>
+  </section>
+  <section id="loupe">
+    <div id="lmain">
+      <div id="ltop">
+        <button id="lback" title="Esc">← Raster</button>
+        <span id="ltitle"></span><span class="spacer"></span><span id="lpos"></span>
+        <button id="lorig" title="O: zwischen bearbeiteter Ansicht und Kamera-Vorschaubild wechseln">Original anzeigen</button>
+      </div>
+      <div id="lstage">
+        <button class="arrow" id="lprev" title="←">‹</button>
+        <img id="limg" alt="">
+        <button class="arrow" id="lnext" title="→">›</button>
+        <div id="lstat"></div>
+      </div>
+      <div id="lstrip"></div>
+    </div>
+    <aside id="linfo"></aside>
   </section>
   <section id="dark">
     <div style="display:flex; height:100%;">
-      <div id="preview"><img id="pimg" alt=""><div id="status"></div></div>
+      <div id="preview"><div id="dtitle"></div><img id="pimg" alt=""><div id="status"></div></div>
       <div id="resizer" title="Ziehen, um die Breite zu ändern"></div>
       <div id="side">
         <div class="tabs">
@@ -153,12 +244,135 @@ async function api(url, opt) {
 }
 
 // ---------- Leuchttisch ----------
-let tagCounts = {};
+const H = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const post = (url, body) => api(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})}).then(r => r.json());
+const putJson = (url, body) => api(url, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
+let tagCounts = {}, list = [], sel = new Set(), lastClicked = null, lib = {rolls:[], catalogs:[], total:0, duplicates:0};
+let view = {type:'all', name:''};
+try { const v = JSON.parse(localStorage.getItem('darkroom.view')); if (v && v.type) view = v; } catch (e) {}
+const baseName = p => (p.source || p.path).split('/').pop();
+const label = p => baseName(p) + (p.is_duplicate ? ` · Duplikat ${p.version}` : '');
+function setView(type, name = '') {
+  view = {type, name}; try { localStorage.setItem('darkroom.view', JSON.stringify(view)); } catch (e) {}
+  drawLibrary(); loadGrid();
+}
+function queryParams() {
+  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value, state:$('#fstate').value });
+  if (view.type === 'roll') p.set('roll', view.name);
+  if (view.type === 'date') p.set('date', view.name);
+  if (view.type === 'catalog') p.set('catalog', view.name);
+  for (const [k, v] of [...p]) if (!v) p.delete(k);
+  return p;
+}
+const openRolls = new Set(); try { JSON.parse(localStorage.getItem('darkroom.open') || '[]').forEach(x => openRolls.add(x)); } catch (e) {}
+const NO_ROLL = 'Ohne Filmrolle';
+const MON = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+// Filmrollen = virtueller Baum Jahr > Monat > Tag aus dem Aufnahmedatum
+function rollTree() {
+  const nodes = new Map();
+  for (const r of lib.days || []) {
+    const parts = r.name.split('/');
+    if (parts.length !== 3) { nodes.set(r.name, {path:r.name, label:r.name, depth:0, count:r.count, kids:0}); continue; }
+    for (let d = 1; d <= 3; d++) {
+      const path = parts.slice(0, d).join('/');
+      const n = nodes.get(path) || {path, depth:d - 1, count:0, kids:d < 3 ? 1 : 0,
+        label: d === 1 ? parts[0] : d === 2 ? MON[+parts[1] - 1] || parts[1] : parts[2] + '.'};
+      n.count += r.count; nodes.set(path, n);
+    }
+  }
+  const cmp = (a, b) => {  // neueste zuerst; Elternknoten direkt vor ihren Kindern
+    if (a.path === 'ohne Datum') return 1; if (b.path === 'ohne Datum') return -1;
+    const x = a.path.split('/'), y = b.path.split('/');
+    for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return y[i].localeCompare(x[i]);
+    return x.length - y.length;
+  };
+  const all = [...nodes.values()].sort(cmp);
+  return all.filter(n => n.depth === 0 || n.path.split('/').slice(0, -1).every((_, i, a) => openRolls.has(a.slice(0, i + 1).join('/'))));
+}
+function drawLibrary() {
+  const on = (t, n) => view.type === t && view.name === n ? ' on' : '';
+  $('#nAll').textContent = lib.total ?? '';
+  $('#navAll').className = 'nav' + (view.type === 'all' ? ' on' : '');
+  $('#rolls').innerHTML = lib.rolls.map(r => `<div class="nav${on('roll', r.name)}" data-type="roll" data-name="${H(r.name)}" title="${H(r.name)}"><span>${r.name === NO_ROLL ? '∅' : '🎞'} ${H(r.name)}</span><small>${r.count}</small></div>`).join('') || '<div class="none">noch keine – importieren oder ＋</div>';
+  $('#days').innerHTML = rollTree().map(n => `<div class="nav${on('date', n.path)}" data-type="date" data-name="${H(n.path)}" data-d="${n.depth}" style="padding-left:${8 + n.depth * 14}px" title="${H(n.path)}"><span>${n.kids ? (openRolls.has(n.path) ? '▾' : '▸') : '·'} ${H(n.label)}</span><small>${n.count}</small></div>`).join('') || '<div class="none">noch keine</div>';
+  $('#cats').innerHTML = lib.catalogs.map(c => `<div class="nav${on('catalog', c.name)}" data-type="catalog" data-name="${H(c.name)}" title="${H(c.name)}"><span>▤ ${H(c.name)}</span><small>${c.count}</small></div>`).join('') || '<div class="none">noch keine – Fotos auswählen und «Zu Katalog hinzufügen»</div>';
+  $('#catTools').style.display = view.type === 'catalog' ? 'flex' : 'none';
+  $('#rollTools').style.display = view.type === 'roll' && view.name !== NO_ROLL ? 'flex' : 'none';
+  const ms = $('#catMerge'); ms.length = 1;
+  lib.catalogs.filter(c => c.name !== view.name).forEach(c => ms.add(new Option(c.name, c.name)));
+  const sr = $('#selRoll'); sr.length = 1;
+  lib.rolls.filter(r => r.name !== NO_ROLL).forEach(r => sr.add(new Option(r.name, r.name))); sr.add(new Option('＋ Neue Filmrolle …', '__new__')); sr.add(new Option('∅ Aus Filmrolle nehmen', NO_ROLL));
+  const sc = $('#selCat'); sc.length = 1;
+  lib.catalogs.forEach(c => sc.add(new Option(c.name, c.name))); sc.add(new Option('＋ Neuer Katalog …', '__new__'));
+}
+$('#lib').addEventListener('click', e => {
+  const n = e.target.closest('.nav'); if (!n) return;
+  if (n.id === 'navAll') return setView('all');
+  if (n.dataset.type === 'date' && n.dataset.d < 2) {  // Jahr/Monat: auf- oder zuklappen
+    const k = n.dataset.name; view.type === 'date' && view.name === k && openRolls.has(k) ? openRolls.delete(k) : openRolls.add(k);
+    try { localStorage.setItem('darkroom.open', JSON.stringify([...openRolls])); } catch (e) {}
+  }
+  setView(n.dataset.type, n.dataset.name);
+});
+async function addToCatalog(name, ids) {
+  if (name === '__new__') { name = (prompt('Name des neuen Katalogs:') || '').trim(); if (!name) return null; }
+  try {
+    const r = await post('/api/catalogs/add', {name, ids});
+    await loadFacets(); await loadGrid();
+    $('#count').textContent = `Katalog «${r.name}»: ${r.hinzugefuegt} hinzugefügt, ${r.gesamt} Fotos insgesamt`;
+    return r;
+  } catch (e) { alert(e.message); return null; }
+}
+$('#newCat').onclick = async () => {
+  const name = (prompt('Name des neuen Katalogs:') || '').trim(); if (!name) return;
+  try { await post('/api/catalogs/add', {name, ids:[]}); await loadFacets(); setView('catalog', name); } catch (e) { alert(e.message); }
+};
+$('#catRename').onclick = async () => {
+  const n = (prompt('Neuer Name:', view.name) || '').trim(); if (!n || n === view.name) return;
+  try { const r = await post('/api/catalogs/rename', {name:view.name, new_name:n}); view.name = r.name; setView('catalog', r.name); await loadFacets(); } catch (e) { alert(e.message); }
+};
+$('#catDel').onclick = async () => {
+  if (!confirm(`Katalog «${view.name}» löschen?\nNur der Katalog verschwindet, die Fotos bleiben in ihren Filmrollen.`)) return;
+  try { await post('/api/catalogs/delete', {name:view.name}); setView('all'); await loadFacets(); } catch (e) { alert(e.message); }
+};
+$('#catMerge').onchange = async e => {
+  const into = e.target.value; e.target.value = ''; if (!into) return;
+  const from = lib.catalogs.find(c => c.name === view.name);
+  if (!confirm(`Katalog «${view.name}» (${from ? from.count : '?'} Fotos) in «${into}» zusammenführen?\n«${view.name}» verschwindet danach, die Fotos bleiben erhalten und sind in «${into}».`)) return;
+  try { const r = await post('/api/catalogs/merge', {name:view.name, into}); await loadFacets(); setView('catalog', into);
+    $('#count').textContent = `Zusammengeführt: ${r.hinzugefuegt} Fotos neu in «${into}» (jetzt ${r.gesamt})`; } catch (e) { alert(e.message); }
+};
+async function moveToRoll(name, ids) {
+  if (name === '__new__') { name = (prompt('Name der neuen Filmrolle:') || '').trim(); if (!name) return null; }
+  try {
+    const r = await post('/api/rolls/move', {name, ids});
+    await loadFacets(); await loadGrid();
+    $('#count').textContent = name === NO_ROLL ? `${r.verschoben} Fotos aus ihrer Filmrolle genommen` : `${r.verschoben} Fotos in Filmrolle «${r.name}» verschoben (jetzt ${r.gesamt})`;
+    return r;
+  } catch (e) { alert(e.message); return null; }
+}
+$('#newRoll').onclick = async () => {
+  const name = (prompt('Name der neuen Filmrolle:') || '').trim(); if (!name) return;
+  try { await post('/api/rolls/move', {name, ids:[]}); await loadFacets(); setView('roll', name); } catch (e) { alert(e.message); }
+};
+$('#rollRename').onclick = async () => {
+  const n = (prompt('Neuer Name:', view.name) || '').trim(); if (!n || n === view.name) return;
+  try { const r = await post('/api/rolls/rename', {name:view.name, new_name:n}); await loadFacets(); setView('roll', r.name); } catch (e) { alert(e.message); }
+};
+$('#rollDel').onclick = async () => {
+  if (!confirm(`Filmrolle «${view.name}» löschen?\nNur die Rolle verschwindet, die Fotos bleiben (unter «${NO_ROLL}»).`)) return;
+  try { await post('/api/rolls/delete', {name:view.name}); setView('all'); await loadFacets(); } catch (e) { alert(e.message); }
+};
+$('#selRoll').onchange = async e => {
+  const v = e.target.value; e.target.value = ''; if (!v || !sel.size) return;
+  await moveToRoll(v, [...sel]);
+};
+
 function drawChips() {
   const q = $('#fq').value.toLowerCase();
   const top = Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 18);
   $('#chips').innerHTML = top.map(([t, n]) =>
-    `<button class="chip${q.includes('tag:' + (/\s/.test(t) ? '"' + t.toLowerCase() + '"' : t.toLowerCase())) ? ' on' : ''}" data-tag="${t.replace(/"/g, '&quot;')}">${t}<small>${n}</small></button>`).join('');
+    `<button class="chip${q.includes('tag:' + (/\s/.test(t) ? '"' + t.toLowerCase() + '"' : t.toLowerCase())) ? ' on' : ''}" data-tag="${H(t)}">${H(t)}<small>${n}</small></button>`).join('');
 }
 $('#chips').addEventListener('click', e => {
   const b = e.target.closest('.chip'); if (!b) return;
@@ -172,21 +386,25 @@ async function loadFacets() {
   const f = await (await api('/api/facets')).json();
   const fill = (sel, arr) => { const el = $(sel), v = el.value; el.length = 1; arr.forEach(x => el.add(new Option(x, x))); el.value = v; };
   fill('#fcam', f.cameras); fill('#flens', f.lenses); fill('#ftag', f.tags);
-  tagCounts = f.tag_counts || {}; drawChips();
+  tagCounts = f.tag_counts || {}; lib = f;
+  if ((view.type === 'roll' && !f.rolls.some(r => r.name === view.name)) || (view.type === 'catalog' && !f.catalogs.some(c => c.name === view.name))) {
+    view = {type:'all', name:''}; loadGrid();  // Rolle/Katalog gibt es nicht mehr
+  }
+  drawLibrary(); drawChips();
 }
 function badges(ph) {
-  const b = (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
+  const b = (ph.is_duplicate ? `<span class="badge dup" title="Duplikat (virtuelle Kopie) von ${H(baseName(ph))}: eigene Parameter, Script und Tags, dieselbe Bilddatei">⧉ Duplikat ${ph.version}</span>` : '') +
+            (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
             (ph.has_script ? (ph.auto_script ? '<span class="badge sc" title="Automatischer Kamera-Look (vom Angleich-Job erzeugt)">&lt;/&gt; Auto</span>'
                                     : '<span class="badge sc" title="Hat ein Script">&lt;/&gt; Script</span>') : '');
   return b ? `<div class="badges">${b}</div>` : '';
 }
 // Aktualisiert Marker und Vorschaubilder der sichtbaren Karten, ohne das Raster neu aufzubauen
 async function refreshCards() {
-  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value, state:$('#fstate').value });
-  for (const [k,v] of [...p]) if (!v) p.delete(k);
-  const list = await (await api('/api/photos?' + p)).json();
+  const fresh = await (await api('/api/photos?' + queryParams())).json();
   let pending = false;
-  for (const ph of list) {
+  for (const ph of fresh) {
+    const i = list.findIndex(x => x.id === ph.id); if (i >= 0) list[i] = ph;
     const card = $(`.card[data-id="${ph.id}"]`); if (!card) continue;
     const img = card.querySelector('img'), want = `/api/thumb/${ph.id}?v=${ph.thumb_v}`;
     if (img.getAttribute('src') !== want) img.src = want;
@@ -201,20 +419,66 @@ function pollThumbs(n = 8) {  // nach dem Speichern: Vorschaubild entsteht im Hi
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => { try { if (await refreshCards() && n > 0) pollThumbs(n - 1); } catch (e) {} }, 2500);
 }
-async function loadGrid() {
-  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value, state:$('#fstate').value });
-  for (const [k,v] of [...p]) if (!v) p.delete(k);
-  const list = await (await api('/api/photos?' + p)).json();
-  $('#count').textContent = list.length + ' Fotos';
-  $('#grid').innerHTML = '';
-  for (const ph of list) {
-    const d = document.createElement('div'); d.className = 'card';
-    d.dataset.id = ph.id; d.title = [...ph.tags, ...ph.ai_tags].join(', ');
-    d.innerHTML = `<div class="ph">${badges(ph)}<img loading="lazy" src="/api/thumb/${ph.id}?v=${ph.thumb_v}"></div><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
-    d.onclick = () => openDark(ph);
-    $('#grid').appendChild(d);
-  }
+function cardEl(ph) {
+  const d = document.createElement('div'); d.className = 'card' + (ph.is_duplicate ? ' dup' : '') + (sel.has(ph.id) ? ' sel' : '');
+  d.dataset.id = ph.id; d.title = [label(ph), ...ph.tags, ...ph.ai_tags].join(', ');
+  d.innerHTML = `<div class="ph">${badges(ph)}<span class="chk" title="Auswählen (Strg-Klick, Umschalt-Klick für Bereich)">✓</span><img loading="lazy" src="/api/thumb/${ph.id}?v=${ph.thumb_v}"></div><div class="meta"><span>${H(baseName(ph))}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
+  return d;
 }
+async function loadGrid() {
+  list = await (await api('/api/photos?' + queryParams())).json();
+  const where = view.type === 'roll' ? ` · Filmrolle «${view.name}»` : view.type === 'date' ? ` · ${view.name}` : view.type === 'catalog' ? ` · Katalog «${view.name}»` : '';
+  $('#count').textContent = list.length + ' Fotos' + where;
+  const g = $('#grid'); g.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const ph of list) frag.appendChild(cardEl(ph));
+  g.appendChild(frag); updateSel();
+}
+// ---------- Auswahl ----------
+function updateSel() {
+  document.querySelectorAll('#grid .card').forEach(c => c.classList.toggle('sel', sel.has(c.dataset.id)));
+  const vis = list.filter(p => sel.has(p.id)).length;
+  $('#selInfo').textContent = sel.size ? `${sel.size} ausgewählt` + (vis !== sel.size ? ` (${vis} hier sichtbar)` : '') : 'Klick = Lupe · Strg/Umschalt-Klick oder ✓ = auswählen';
+  $('#selActions').style.display = sel.size ? 'flex' : 'none';
+  $('#selRemove').style.display = view.type === 'catalog' ? '' : 'none';
+  $('#selDel').style.display = list.some(p => sel.has(p.id) && p.is_duplicate) ? '' : 'none';
+}
+function toggleSel(id) { sel.has(id) ? sel.delete(id) : sel.add(id); updateSel(); }
+$('#grid').addEventListener('click', e => {
+  const card = e.target.closest('.card'); if (!card) return;
+  const id = card.dataset.id;
+  if (e.shiftKey && lastClicked) {
+    const a = list.findIndex(p => p.id === lastClicked), b = list.findIndex(p => p.id === id);
+    if (a >= 0 && b >= 0) { for (const p of list.slice(Math.min(a, b), Math.max(a, b) + 1)) sel.add(p.id); updateSel(); return; }
+  }
+  if (e.target.closest('.chk') || e.ctrlKey || e.metaKey) { toggleSel(id); lastClicked = id; return; }
+  lastClicked = id; openLoupe(id);
+});
+$('#selAll').onclick = () => { list.forEach(p => sel.add(p.id)); updateSel(); };
+$('#selNone').onclick = () => { sel.clear(); updateSel(); };
+$('#selCat').onchange = async e => {
+  const v = e.target.value; e.target.value = ''; if (!v || !sel.size) return;
+  await addToCatalog(v, [...sel]);
+};
+$('#selRemove').onclick = async () => {
+  if (!sel.size || !confirm(`${sel.size} Fotos aus Katalog «${view.name}» entfernen?\n(Die Fotos selbst bleiben erhalten.)`)) return;
+  try { const r = await post('/api/catalogs/remove', {name:view.name, ids:[...sel]}); sel.clear(); await loadFacets(); await loadGrid();
+    $('#count').textContent = `${r.entfernt} Fotos aus dem Katalog entfernt`; } catch (e) { alert(e.message); }
+};
+$('#selDup').onclick = async () => {
+  if (!sel.size) return;
+  if (sel.size > 20 && !confirm(`${sel.size} Duplikate anlegen?`)) return;
+  const made = [];
+  try { for (const id of [...sel]) made.push((await post(`/api/photos/${id}/duplicate`)).id); } catch (e) { alert(e.message); }
+  sel = new Set(made); await loadFacets(); await loadGrid();
+  $('#count').textContent = `${made.length} Duplikate angelegt (ausgewählt, blau gestrichelt markiert)`;
+};
+$('#selDel').onclick = async () => {
+  const dups = list.filter(p => sel.has(p.id) && p.is_duplicate);
+  if (!dups.length || !confirm(`${dups.length} Duplikate endgültig löschen?\nIhre Parameter, Scripts und Tags gehen verloren. Originale sind nie betroffen.`)) return;
+  try { for (const p of dups) { await api(`/api/photos/${p.id}`, {method:'DELETE'}); sel.delete(p.id); } } catch (e) { alert(e.message); }
+  await loadFacets(); await loadGrid();
+};
 ['#fcam','#flens','#frate','#ftag','#fstate'].forEach(s => $(s).addEventListener('input', loadGrid));
 let searchTimer = null;
 function toggleClear() { $('#clr').style.display = $('#fq').value ? 'block' : 'none'; }
@@ -225,9 +489,13 @@ $('#help').onclick = e => { e.stopPropagation(); const h = $('#helpPanel'); h.st
 document.addEventListener('click', e => { if (!e.target.closest('#helpPanel')) $('#helpPanel').style.display = 'none'; });
 document.addEventListener('keydown', e => { if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('#lighttable').style.display !== 'none') { e.preventDefault(); $('#fq').focus(); } });
 $('#scan').onclick = async () => {
+  const now = new Date(), pad = n => String(n).padStart(2, '0');
+  const dflt = `Import ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const roll = prompt('Neu importierte Fotos kommen in die Filmrolle:\n(leer lassen = Vorschlag; Abbrechen = nicht scannen)', dflt);
+  if (roll === null) return;
   $('#scan').textContent = 'Scanne…';
-  try { const s = await (await api('/api/scan', {method:'POST'})).json();
-    alert(`Neu: ${s.neu}\nXMP importiert: ${s.xmp_importiert}\nBereits vorhanden: ${s.vorhanden}` + (s.fehler.length ? `\nFehler:\n${s.fehler.join('\n')}` : '')); }
+  try { const s = await (await post('/api/scan', {roll: roll.trim() || dflt}));
+    alert((s.filmrolle ? `Filmrolle «${s.filmrolle}»\n` : '') + `Neu: ${s.neu}\nXMP importiert: ${s.xmp_importiert}\nBereits vorhanden: ${s.vorhanden}` + (s.duplikate_wiederhergestellt ? `\nDuplikate wiederhergestellt: ${s.duplikate_wiederhergestellt}` : '') + (s.fehler.length ? `\nFehler:\n${s.fehler.join('\n')}` : '')); }
   catch (e) { alert(e.message); }
   $('#scan').textContent = 'Bibliothek scannen'; await loadFacets(); await loadGrid();
 };
@@ -290,27 +558,175 @@ $('#ai').onclick = async () => {
   pollTag();
 };
 pollTag();
+$('#organize').onclick = async () => {
+  try {
+    const pl = await post('/api/organize', {dry_run:true});
+    if (!pl.anzahl) { alert('Alles ist schon nach Jahr/Monat/Tag geordnet.' + (pl.ohne_datum ? `\n${pl.ohne_datum} Fotos ohne Aufnahmedatum bleiben, wo sie sind.` : '')); return; }
+    const ex = pl.beispiele.map(m => `  ${m.von}\n  → ${m.nach}`).join('\n');
+    if (!confirm(`${pl.anzahl} Dateien in der Bibliothek nach Jahr/Monat/Tag verschieben?\n\nBeispiele:\n${ex}\n\nXMP-Dateien wandern mit; Parameter, Scripts, Tags, Duplikate und Kataloge bleiben erhalten. Fotos ohne Datum (${pl.ohne_datum}) bleiben liegen. Leere Ordner werden entfernt.`)) return;
+    $('#organize').textContent = 'Ordne…';
+    const r = await post('/api/organize', {dry_run:false});
+    alert(`${r.verschoben} Dateien verschoben.` + (r.fehler.length ? `\nFehler:\n${r.fehler.slice(0, 8).join('\n')}` : ''));
+  } catch (e) { alert(e.message); }
+  $('#organize').textContent = 'Ordnen'; await loadFacets(); await loadGrid();
+};
 $('#exportXmp').onclick = async () => {
-  if (!confirm('XMP-Dateien für alle Fotos neben die Originale schreiben? Bestehende XMPs werden als .bak gesichert.')) return;
+  if (!confirm('XMP-Dateien für alle Originale neben die RAW-Dateien schreiben? Bestehende XMPs werden als .bak gesichert. Duplikate werden übersprungen (XMP kennt nur eine Version pro Datei).')) return;
   const r = await (await api('/api/export-xmp', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})).json();
   alert(r.geschrieben + ' XMP-Dateien geschrieben.');
 };
 
+
+// ---------- Lupe (Galerie-Ansicht) ----------
+let lidx = -1, lseq = 0, showOrig = false, linfo = null, stripFor = null;
+const viewUrl = ph => `/api/photos/${ph.id}/view?max_side=2400${showOrig ? '&original=1' : ''}`;
+function fmtShutter(s) { return s ? s + ' s' : null; }
+function row(k, v) { return v == null || v === '' ? '' : `<dt>${k}</dt><dd>${H(v)}</dd>`; }
+function buildStrip() {
+  if (stripFor === list) return;
+  stripFor = list;
+  $('#lstrip').innerHTML = list.map(p => `<img loading="lazy" data-id="${p.id}" class="${p.is_duplicate ? 'dup' : ''}" src="/api/thumb/${p.id}?v=${p.thumb_v}" title="${H(label(p))}">`).join('');
+}
+$('#lstrip').addEventListener('click', e => { const i = e.target.closest('img'); if (i) openLoupe(i.dataset.id); });
+async function openLoupe(id) {
+  let i = list.findIndex(p => p.id === id);
+  if (i < 0) { await loadGrid(); i = list.findIndex(p => p.id === id); }
+  if (i < 0) { $('#count').textContent = 'Das Foto ist durch die aktuellen Filter ausgeblendet.'; return; }
+  lidx = i; const ph = list[i], my = ++lseq; current = ph;
+  $('#tabLoupe').disabled = false; $('#tabDark').disabled = false; show('loupe');
+  $('#ltitle').innerHTML = H(baseName(ph)) + (ph.is_duplicate ? ` <span class="badge dup">⧉ Duplikat ${ph.version}</span>` : '');
+  $('#lpos').textContent = `${i + 1} / ${list.length}`;
+  $('#lorig').classList.toggle('on', showOrig); $('#lorig').textContent = showOrig ? 'Bearbeitet anzeigen' : 'Original anzeigen';
+  const img = $('#limg'); img.src = `/api/thumb/${ph.id}?v=${ph.thumb_v}`; img.classList.add('lowres');
+  $('#lstat').textContent = 'lädt …';
+  const big = new Image();
+  big.onload = () => { if (my === lseq) { img.src = big.src; img.classList.remove('lowres'); $('#lstat').textContent = showOrig ? 'Original (Kamera-Vorschaubild)' : ''; } };
+  big.onerror = () => { if (my === lseq) $('#lstat').textContent = 'Ansicht konnte nicht erzeugt werden'; };
+  big.src = viewUrl(ph);
+  for (const d of [1, -1]) if (list[i + d]) new Image().src = viewUrl(list[i + d]);  // Nachbarn vorladen
+  buildStrip();
+  document.querySelectorAll('#lstrip img').forEach(x => x.classList.toggle('on', x.dataset.id === id));
+  const cur = $(`#lstrip img[data-id="${id}"]`); if (cur) cur.scrollIntoView({inline:'center', block:'nearest'});
+  try { linfo = await (await api(`/api/photos/${id}/info`)).json(); if (my === lseq) renderInfo(); } catch (e) { $('#linfo').textContent = e.message; }
+}
+function renderInfo() {
+  const f = linfo, x = f.exif || {}, ph = list[lidx]; if (!ph || ph.id !== f.id) return;
+  const mp = x.width && x.height ? ` (${(x.width * x.height / 1e6).toFixed(1)} MP)` : '';
+  const stars = [1, 2, 3, 4, 5].map(n => `<span class="${n <= f.rating ? 'f' : ''}" data-n="${n}" title="${n} Sterne (Taste ${n})">★</span>`).join('');
+  const others = lib.catalogs.filter(c => !f.catalogs.includes(c.name));
+  $('#linfo').innerHTML = `
+    <div><div class="fname">${H(f.file)}</div>
+      ${f.is_duplicate ? `<span class="badge dup">⧉ Duplikat ${f.version} · eigene Parameter, dieselbe Bilddatei</span>` : '<span style="color:var(--mute)">Original</span>'}
+      <div style="margin-top:6px"><a href="#" id="iRoll" style="color:var(--acc)" title="Filmrolle anzeigen">🎞 ${H(f.roll)}</a> <span style="color:var(--mute)">· ${H(f.date)}</span></div>
+      <select id="iMoveRoll" style="margin-top:6px"><option value="">In Filmrolle verschieben…</option>${lib.rolls.filter(r => r.name !== NO_ROLL && r.name !== f.roll).map(r => `<option>${H(r.name)}</option>`).join('')}<option value="__new__">＋ Neue Filmrolle …</option>${f.roll !== NO_ROLL ? `<option value="${NO_ROLL}">∅ Aus Filmrolle nehmen</option>` : ''}</select></div>
+    <div><h3>Bewertung</h3><div class="stars" id="iStars">${stars}</div></div>
+    <div><h3>Aufnahme</h3><dl>${row('Datum', x.taken)}${row('Kamera', x.camera)}${row('Objektiv', x.lens)}${row('Brennweite', x.focal ? Math.round(x.focal) + ' mm' : null)}${row('Blende', x.aperture ? 'f/' + x.aperture : null)}${row('Belichtung', fmtShutter(x.shutter))}${row('ISO', x.iso)}${row('Auflösung', x.width ? `${x.width} × ${x.height}${mp}` : null)}${row('Dateigrösse', f.size ? (f.size / 1048576).toFixed(1) + ' MB' : null)}</dl></div>
+    <div><h3>Bearbeitung</h3>
+      <div class="tags">${f.edited ? '<span class="badge">✎ bearbeitet</span>' : '<span style="color:var(--mute)">unbearbeitet</span>'}${f.has_script ? (f.auto_script ? '<span class="badge sc">&lt;/&gt; Auto</span>' : '<span class="badge sc">&lt;/&gt; Script</span>') : ''}</div>
+      ${f.changed.length ? `<div style="color:var(--mute);margin-top:6px">Geändert: ${H(f.changed.join(', '))}</div>` : ''}</div>
+    <div><h3>Tags</h3><div class="tags" id="iTags">${f.tags.map(t => `<span class="tg" data-t="${H(t)}">${H(t)}<b data-rm="${H(t)}" title="Entfernen">×</b></span>`).join('')}<input class="small" id="iTagIn" placeholder="Tag hinzufügen ⏎" size="14"></div>
+      ${f.ai_tags.length ? `<div class="tags" style="margin-top:8px" title="Von der KI vergeben">${f.ai_tags.map(t => `<span class="tg ai" data-s="${H(t)}">${H(t)}</span>`).join('')}</div>` : ''}</div>
+    <div><h3>Kataloge</h3><div class="tags" id="iCats">${f.catalogs.map(c => `<span class="tg cat" data-c="${H(c)}">${H(c)}<b data-rmc="${H(c)}" title="Aus diesem Katalog entfernen">×</b></span>`).join('') || '<span style="color:var(--mute)">in keinem Katalog</span>'}</div>
+      <select id="iAddCat" style="margin-top:8px"><option value="">Zu Katalog hinzufügen…</option>${others.map(c => `<option>${H(c.name)}</option>`).join('')}<option value="__new__">＋ Neuer Katalog …</option></select></div>
+    <div><h3>Versionen</h3><div class="vers">${f.versions.map(v => `<button class="${v.id === f.id ? 'on' : ''} ${v.is_duplicate ? 'd' : ''}" data-v="${v.id}">${v.is_duplicate ? '⧉ Duplikat ' + v.version : 'Original'}</button>`).join('')}</div></div>
+    <div class="actions">
+      <button id="iDev" class="on">Entwickeln ✎<kbd>⏎</kbd></button>
+      <button id="iDup">Duplikat erstellen<kbd>V</kbd></button>
+      ${f.is_duplicate ? '<button id="iDel">Duplikat löschen<kbd>Entf</kbd></button>' : ''}
+    </div>`;
+}
+$('#linfo').addEventListener('click', async e => {
+  const t = e.target, f = linfo; if (!f) return;
+  try {
+    if (t.closest('#iStars span')) { const n = +t.dataset.n; await setMeta({rating: n === f.rating ? 0 : n}); }
+    else if (t.dataset.rm) await setMeta({tags: f.tags.filter(x => x !== t.dataset.rm)});
+    else if (t.dataset.rmc) { await post('/api/catalogs/remove', {name:t.dataset.rmc, ids:[f.id]}); await afterCatalogChange(); }
+    else if (t.closest('[data-s]')) { $('#fq').value = 'tag:' + (/\s/.test(t.closest('[data-s]').dataset.s) ? `"${t.closest('[data-s]').dataset.s}"` : t.closest('[data-s]').dataset.s); toggleClear(); await backToGrid(); }
+    else if (t.closest('[data-c]') && !t.dataset.rmc) { setView('catalog', t.closest('[data-c]').dataset.c); show('light'); }
+    else if (t.id === 'iRoll') { e.preventDefault(); setView('roll', f.roll); show('light'); }
+    else if (t.dataset.v) openLoupe(t.dataset.v);
+    else if (t.id === 'iDev') openDark(list[lidx]);
+    else if (t.id === 'iDup') await makeDuplicate();
+    else if (t.id === 'iDel') await deleteCurrentDuplicate();
+  } catch (err) { $('#lstat').textContent = err.message; }
+});
+$('#linfo').addEventListener('change', async e => {
+  if (e.target.id === 'iMoveRoll' && e.target.value) { const id = linfo.id, r = await moveToRoll(e.target.value, [id]); if (r) await openLoupe(id); return; }
+  if (e.target.id !== 'iAddCat' || !e.target.value) return;
+  const r = await addToCatalog(e.target.value, [linfo.id]); if (r) { await afterCatalogChange(); }
+});
+$('#linfo').addEventListener('keydown', async e => {
+  if (e.target.id === 'iTagIn' && e.key === 'Enter') {
+    const v = e.target.value.trim(); if (!v) return;
+    await setMeta({tags: [...linfo.tags, v]});
+  }
+});
+async function afterCatalogChange() {
+  const id = linfo.id; await loadFacets(); await loadGrid(); await openLoupe(id);
+}
+async function setMeta(body) {
+  const id = linfo.id;
+  linfo = await putJson(`/api/photos/${id}/meta`, body);
+  const i = list.findIndex(p => p.id === id);
+  if (i >= 0) { list[i] = {...list[i], rating:linfo.rating, tags:linfo.tags};
+    const c = $(`.card[data-id="${id}"] .meta span:last-child`); if (c) c.textContent = '★'.repeat(linfo.rating); }
+  renderInfo(); loadFacets().catch(() => {});
+}
+async function makeDuplicate() {
+  const r = await post(`/api/photos/${list[lidx].id}/duplicate`);
+  await loadFacets(); await loadGrid(); await openLoupe(r.id);
+}
+async function deleteCurrentDuplicate() {
+  const ph = list[lidx]; if (!ph.is_duplicate) return;
+  if (!confirm(`Duplikat ${ph.version} von ${baseName(ph)} löschen?\nSeine Parameter, sein Script und seine Tags gehen verloren. Das Original bleibt.`)) return;
+  const orig = linfo.versions.find(v => !v.is_duplicate);
+  await api(`/api/photos/${ph.id}`, {method:'DELETE'}); sel.delete(ph.id);
+  await loadFacets(); await loadGrid();
+  if (orig && list.some(p => p.id === orig.id)) openLoupe(orig.id); else if (list.length) openLoupe(list[Math.min(lidx, list.length - 1)].id); else backToGrid();
+}
+function step(d) { const n = lidx + d; if (n >= 0 && n < list.length) openLoupe(list[n].id); }
+async function backToGrid() {
+  show('light'); await loadGrid(); if (dirty) { dirty = false; pollThumbs(); }
+  const c = current && $(`.card[data-id="${current.id}"]`); if (c) c.scrollIntoView({block:'nearest'});
+}
+$('#lback').onclick = backToGrid;
+$('#lprev').onclick = () => step(-1); $('#lnext').onclick = () => step(1);
+$('#lorig').onclick = () => { showOrig = !showOrig; openLoupe(list[lidx].id); };
+document.addEventListener('keydown', e => {
+  if ($('#loupe').style.display === 'none' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { if (e.key === 'Escape') document.activeElement.blur(); return; }
+  const k = e.key;
+  if (k === 'ArrowRight' || k === ' ') { e.preventDefault(); step(1); }
+  else if (k === 'ArrowLeft' || k === 'Backspace') { e.preventDefault(); step(-1); }
+  else if (k === 'Home') step(-lidx); else if (k === 'End') step(list.length - 1 - lidx);
+  else if (k === 'Escape') backToGrid();
+  else if (k === 'Enter') openDark(list[lidx]);
+  else if (/^[0-5]$/.test(k) && linfo) setMeta({rating: +k === linfo.rating && +k > 0 ? 0 : +k}).catch(() => {});
+  else if (k === 'o' || k === 'O') $('#lorig').click();
+  else if (k === 'v' || k === 'V') makeDuplicate().catch(err => $('#lstat').textContent = err.message);
+  else if (k === 'Delete') deleteCurrentDuplicate().catch(err => $('#lstat').textContent = err.message);
+});
+
 // ---------- Dunkelkammer ----------
 function show(view) {
   $('#lighttable').style.display = view === 'light' ? 'flex' : 'none';
+  $('#loupe').style.display = view === 'loupe' ? 'flex' : 'none';
   $('#dark').style.display = view === 'dark' ? 'block' : 'none';
   $('#lightTools').style.display = view === 'light' ? '' : 'none';
   $('#searchWrap').style.display = view === 'light' ? '' : 'none';
   $('#tabLight').classList.toggle('on', view === 'light');
+  $('#tabLoupe').classList.toggle('on', view === 'loupe');
   $('#tabDark').classList.toggle('on', view === 'dark');
 }
 $('#tabLight').onclick = async () => { show('light'); await loadGrid(); if (dirty) { dirty = false; pollThumbs(); } };
 let dirty = false;
-$('#tabDark').onclick = () => current && show('dark');
+let darkId = null;
+$('#tabDark').onclick = () => { if (!current) return; current.id === darkId ? show('dark') : openDark(current); };
+$('#tabLoupe').onclick = () => { if (!current) return; if (dirty) { dirty = false; pollThumbs(); } openLoupe(current.id); };
 
 async function openDark(ph) {
-  current = ph; $('#tabDark').disabled = false; show('dark');
+  current = ph; darkId = ph.id; $('#tabDark').disabled = false; $('#tabLoupe').disabled = false; show('dark');
+  $('#dtitle').innerHTML = H(label(ph));
   $('#err').textContent = '';
   $('#editor').value = (await (await api(`/api/photos/${ph.id}/params`)).json()).yaml;
   $('#scriptEditor').value = (await (await api(`/api/photos/${ph.id}/script`)).json()).script;
@@ -446,7 +862,7 @@ $('#exportBtn').onclick = async () => {
   try {
     const r = await api(`/api/photos/${current.id}/export`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile:$('#profSel').value})});
     const blob = await r.blob(), a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = current.path.split('/').pop().replace(/\.[^.]+$/, '') + (blob.type.includes('tif') ? '.tif' : '.jpg'); a.click();
+    a.href = URL.createObjectURL(blob); a.download = baseName(current).replace(/\.[^.]+$/, '') + (current.is_duplicate ? '_d' + current.version : '') + (blob.type.includes('tif') ? '.tif' : '.jpg'); a.click();
     $('#status').textContent = 'exportiert (auch in data/exports gespeichert)';
   } catch (e) { $('#err').textContent = e.message; $('#status').textContent = ''; }
 };
@@ -480,7 +896,7 @@ setSize(savedSize, false);
 $('#size').addEventListener('input', e => setSize(+e.target.value));
 $('#grid').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); setSize(+$('#size').value + (e.deltaY < 0 ? 20 : -20)); } }, {passive:false});
 
-loadFacets(); loadGrid();
+loadFacets().then(() => loadGrid());
 </script>
 </body>
 </html>

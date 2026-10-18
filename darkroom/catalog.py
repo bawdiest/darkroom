@@ -23,7 +23,10 @@ SCRIPTS_DIR = DATA / "scripts"  # ein Script pro Foto, gehoert ins Git-Repo
 SCRIPT_PRESETS_DIR = DATA / "script_presets"
 EXPORTS_DIR = DATA / "exports"
 AI_TAGS_DIR = DATA / "ai_tags"  # ein JSON pro Foto mit den KI-Tags (gehört ins Git-Repo)
+ROLLS_FILE = DATA / "rolls.yaml"  # Filmrollen (Name -> Fotos; jedes Foto in höchstens einer), gehört ins Git-Repo
+CATALOGS_FILE = DATA / "catalogs.yaml"  # manuelle Kataloge (Name -> Fotos), gehört ins Git-Repo
 THUMBS = DATA / "cache" / "thumbs"
+VIEWS = DATA / "cache" / "views"  # grosse Ansichten der Lupe
 DB_PATH = DATA / "cache" / "index.db"
 
 THUMB_SIZE = 640  # lange Seite der Vorschaubilder in Pixeln
@@ -41,14 +44,50 @@ def db() -> sqlite3.Connection:
     c = sqlite3.connect(DB_PATH)
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
-    if "ai_tags" not in {r[1] for r in c.execute("PRAGMA table_info(photos)")}:  # Migration älterer Indizes
-        c.execute("ALTER TABLE photos ADD COLUMN ai_tags TEXT DEFAULT '[]'")
-        c.commit()
+    have = {r[1] for r in c.execute("PRAGMA table_info(photos)")}
+    for col, ddl in (("ai_tags", "TEXT DEFAULT '[]'"), ("source", "TEXT"), ("version", "INTEGER DEFAULT 0")):
+        if col not in have:  # Migration älterer Indizes
+            c.execute(f"ALTER TABLE photos ADD COLUMN {col} {ddl}")
+            c.commit()
     return c
 
 
 def photo_id(rel: str) -> str:
     return hashlib.sha1(rel.encode()).hexdigest()[:16]
+
+
+NO_ROLL = "Ohne Filmrolle"
+DUP_SEP = "~d"  # Duplikate heissen «<Original>~d<Nr>»; unter diesem Namen liegen ihre Parameter, Script und KI-Tags
+_DUP_RE = re.compile(r"^(.*)" + re.escape(DUP_SEP) + r"(\d+)$")
+
+
+def _get(row, key, default=None):
+    try:
+        v = row[key]
+    except (KeyError, IndexError):
+        return default
+    return default if v is None else v
+
+
+def raw_path(row) -> Path:
+    """Pfad der echten Bilddatei. Ein Duplikat teilt sich die Datei mit seinem Original."""
+    return LIBRARY / (_get(row, "source") or row["path"])
+
+
+def is_duplicate(row) -> bool:
+    return bool(_get(row, "source"))
+
+
+def date_of(row) -> str:
+    """Aufnahmedatum als «JJJJ/MM/TT» (Gruppierung «Nach Datum» und Ordnung auf dem Laufwerk)."""
+    t = _get(row, "taken") or ""
+    return f"{t[0:4]}/{t[5:7]}/{t[8:10]}" if re.match(r"^\d{4}-\d{2}-\d{2}", t) else "ohne Datum"
+
+
+def export_stem(row) -> str:
+    src = _get(row, "source")
+    stem = Path(src or row["path"]).stem
+    return f"{stem}_d{_get(row, 'version', 0)}" if src else stem
 
 
 def params_file(rel: str) -> Path:
@@ -102,6 +141,23 @@ def read_exif(path: Path) -> dict:
     return out
 
 
+def embedded_rgb(path: Path):
+    """Eingebettetes Kamera-JPEG eines RAWs als RGB-Array (None, wenn es keins gibt oder die Datei kein RAW ist)."""
+    if path.suffix.lower() not in RAW_EXT:
+        return None
+    try:
+        import rawpy
+
+        with rawpy.imread(str(path)) as raw:
+            th = raw.extract_thumb()
+            if th.format == rawpy.ThumbFormat.JPEG:
+                arr = cv2.imdecode(np.frombuffer(th.data, np.uint8), cv2.IMREAD_COLOR)
+                return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+    except Exception:
+        pass
+    return None
+
+
 def make_thumb(path: Path, pid: str, p: Params, original: bool = False) -> None:
     """original=True: Vorschau ohne Bearbeitung (eingebettetes Kamera-JPEG), sonst Standard beim Scan."""
     THUMBS.mkdir(parents=True, exist_ok=True)
@@ -127,13 +183,20 @@ def make_thumb(path: Path, pid: str, p: Params, original: bool = False) -> None:
     target.write_bytes(to_jpeg(rgb, 82))
 
 
-def scan(import_xmp: bool = True) -> dict:
+def _in_data(path: Path) -> bool:
+    if DATA not in path.parents:
+        return False
+    return path.relative_to(DATA).parts[0] in {"cache", "params", "scripts", "ai_tags", "presets", "script_presets", "exports"}
+
+
+def scan(import_xmp: bool = True, roll: str | None = None) -> dict:
     """Durchsucht LIBRARY, indiziert neue Fotos, liest XMPs ein (nur wenn noch keine YAML existiert)."""
     stats = {"neu": 0, "xmp_importiert": 0, "vorhanden": 0, "fehler": []}
+    imported: list[str] = []
     con = db()
     for path in sorted(LIBRARY.rglob("*")):
-        if path.suffix.lower() not in RAW_EXT | IMG_EXT or path.name.startswith("."):
-            continue
+        if path.suffix.lower() not in RAW_EXT | IMG_EXT or path.name.startswith(".") or _in_data(path):
+            continue  # (liegt der Datenordner in der Bibliothek, wird er nicht als Fotoquelle gescannt)
         rel = path.relative_to(LIBRARY).as_posix()
         pid = photo_id(rel)
         if con.execute("SELECT 1 FROM photos WHERE id=?", (pid,)).fetchone():
@@ -161,9 +224,20 @@ def scan(import_xmp: bool = True) -> dict:
                  params.rating, json.dumps(params.tags, ensure_ascii=False), json.dumps(ai, ensure_ascii=False)),
             )
             stats["neu"] += 1
+            imported.append(rel)
         except Exception as e:  # ein defektes Foto soll den Scan nicht stoppen
             stats["fehler"].append(f"{rel}: {e}")
     con.commit()
+    stats["duplikate_wiederhergestellt"] = restore_duplicates()
+    if imported:  # alle neu importierten Fotos kommen in eine gemeinsame Filmrolle
+        import datetime
+
+        name = _cat_name(roll or "Import " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        rolls = read_rolls()
+        taken = {p for ps in rolls.values() for p in ps}
+        rolls.setdefault(name, []).extend(p for p in imported if p not in taken)
+        write_rolls(rolls)
+        stats["filmrolle"] = name
     return stats
 
 
@@ -226,6 +300,7 @@ KEYS = {
     "datum": "date", "date": "date", "iso": "iso", "brennweite": "focal", "focal": "focal", "mm": "focal",
     "bewertung": "rating", "rating": "rating", "sterne": "rating", "name": "name", "datei": "name", "file": "name",
     "ordner": "name", "pfad": "name", "status": "status", "ist": "status",
+    "katalog": "catalog", "catalog": "catalog", "rolle": "roll", "filmrolle": "roll",
 }
 _TOKEN = re.compile(r'(-)?(?:([A-Za-zÄÖÜäöüß]+):)?("[^"]*"|\S+)')
 _DATE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
@@ -276,7 +351,7 @@ def _date_match(spec: str, taken: str | None) -> bool:
 
 def _matches(row: dict, conds: list[dict], state: dict) -> bool:
     hay = " ".join(filter(None, [row["path"], row.get("camera"), row.get("lens"), row.get("taken"),
-                                 *row["tags"], *row["ai_tags"]])).casefold()
+                                 *row["tags"], *row["ai_tags"], *row.get("catalogs", [])])).casefold()
     tags = [t.casefold() for t in (*row["tags"], *row["ai_tags"])]
     for c in conds:
         v, k = c["val"], c["key"]
@@ -297,10 +372,15 @@ def _matches(row: dict, conds: list[dict], state: dict) -> bool:
             ok = _num_match(v, row.get("rating"))
         elif k == "name":
             ok = vl in row["path"].casefold()
+        elif k == "catalog":
+            ok = any(vl in c.casefold() for c in row.get("catalogs", []))
+        elif k == "roll":
+            ok = vl in row.get("roll", "").casefold()
         elif k == "status":
             ok = {"bearbeitet": state["edited"] or state["manual_script"], "unbearbeitet": not (state["edited"] or state["manual_script"]),
                   "script": state["has_script"], "ki": bool(row["ai_tags"]), "getaggt": bool(row["ai_tags"]),
-                  "ungetaggt": not row["ai_tags"]}.get(vl, False)
+                  "ungetaggt": not row["ai_tags"],
+                  "duplikat": bool(row.get("is_duplicate")), "original": not row.get("is_duplicate")}.get(vl, False)
         else:  # freier Text: Fotoname, Tags, Kamera, Objektiv, Datum; Jahre/Monate auch als Datum
             ok = vl in hay or _date_match(v, row.get("taken"))
         if ok == c["neg"]:
@@ -308,18 +388,36 @@ def _matches(row: dict, conds: list[dict], state: dict) -> bool:
     return True
 
 
-def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=None, limit=2000) -> list[dict]:
-    """q: Suchtext (siehe parse_query). state: None/'' = alle, 'edited', 'script', 'unedited'."""
+def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=None, limit=2000,
+                roll=None, catalog=None, date=None) -> list[dict]:
+    """q: Suchtext (siehe parse_query). state: None/'' = alle, 'edited', 'script', 'unedited', 'duplicates'.
+    roll: Name einer Filmrolle (NO_ROLL = ohne). date: «JJJJ», «JJJJ/MM» oder «JJJJ/MM/TT». catalog: Name eines Katalogs."""
     sql, args = "SELECT * FROM photos WHERE rating>=?", [min_rating]
     if camera:
         sql += " AND camera=?"; args.append(camera)
     if lens:
         sql += " AND lens=?"; args.append(lens)
-    sql += " ORDER BY taken DESC, path"
+    sql += " ORDER BY taken DESC, COALESCE(source, path), version"  # Duplikate stehen direkt hinter ihrem Original
     conds = parse_query(q) if q else []
+    cats = read_catalogs()
+    member: dict[str, list[str]] = {}
+    for name, paths in cats.items():
+        for pth in paths:
+            member.setdefault(pth, []).append(name)
+    only = set(cats.get(catalog, [])) if catalog else None
+    in_roll = {pth: n for n, ps in read_rolls().items() for pth in ps}
     out = []
     for r in db().execute(sql, args):
+        if only is not None and r["path"] not in only:
+            continue
         d = dict(r) | {"tags": json.loads(r["tags"]), "ai_tags": json.loads(r["ai_tags"] or "[]")}
+        d["roll"], d["date"] = in_roll.get(r["path"], NO_ROLL), date_of(r)
+        d["is_duplicate"], d["catalogs"] = is_duplicate(r), member.get(r["path"], [])
+        d["version"] = d["version"] or 0
+        if roll is not None and d["roll"] != roll:
+            continue
+        if date is not None and d["date"] != date and not d["date"].startswith(date + "/"):  # Jahr/Monat umfasst Untergruppen
+            continue
         if tag and tag not in d["tags"] and tag not in d["ai_tags"]:
             continue
         d |= edit_state(r["path"]) | {"thumb_v": thumb_version(r["id"])}
@@ -334,6 +432,8 @@ def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=No
             continue
         if state == "unedited" and (d["edited"] or manual_script):
             continue
+        if state == "duplicates" and not d["is_duplicate"]:
+            continue
         out.append(d)
         if len(out) >= limit:
             break
@@ -344,7 +444,479 @@ def facets() -> dict:
     con = db()
     col = lambda c: [r[0] for r in con.execute(f"SELECT DISTINCT {c} FROM photos WHERE {c} IS NOT NULL ORDER BY 1")]
     counts: dict[str, int] = {}
-    for tags, ai in con.execute("SELECT tags, ai_tags FROM photos"):
+    days: dict[str, int] = {}
+    in_roll = {pth: n for n, ps in read_rolls().items() for pth in ps}
+    rolls = {n: 0 for n in read_rolls()}
+    for tags, ai, path, source, taken in con.execute("SELECT tags, ai_tags, path, source, taken FROM photos"):
         for t in {*json.loads(tags), *json.loads(ai or "[]")}:
             counts[t] = counts.get(t, 0) + 1
-    return {"cameras": col("camera"), "lenses": col("lens"), "tags": sorted(counts), "tag_counts": counts}
+        k = date_of({"path": path, "source": source, "taken": taken})
+        days[k] = days.get(k, 0) + 1
+        r = in_roll.get(path, NO_ROLL)
+        rolls[r] = rolls.get(r, 0) + 1
+    existing = {r[0] for r in con.execute("SELECT path FROM photos")}
+    cats = [{"name": n, "count": sum(1 for p in ps if p in existing)} for n, ps in sorted(read_catalogs().items(), key=lambda x: x[0].casefold())]
+    return {"cameras": col("camera"), "lenses": col("lens"), "tags": sorted(counts), "tag_counts": counts,
+            "rolls": [{"name": k, "count": v} for k, v in sorted(rolls.items(), key=lambda x: (x[0] == NO_ROLL, x[0].casefold())) if v or k != NO_ROLL],
+            "days": [{"name": k, "count": v} for k, v in sorted(days.items())], "catalogs": cats,
+            "duplicates": con.execute("SELECT COUNT(*) FROM photos WHERE source IS NOT NULL").fetchone()[0],
+            "total": con.execute("SELECT COUNT(*) FROM photos").fetchone()[0]}
+
+
+# ---------- Duplikate (virtuelle Kopien) ----------
+def _fetch(pid: str):
+    row = db().execute("SELECT * FROM photos WHERE id=?", (pid,)).fetchone()
+    if not row:
+        raise KeyError(pid)
+    return row
+
+
+def _copy_sidecars(src_rel: str, dst_rel: str) -> None:
+    import shutil
+
+    for f_of in (params_file, script_file, ai_tags_file):
+        a, b = f_of(src_rel), f_of(dst_rel)
+        if a.exists():
+            b.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(a, b)
+
+
+def create_duplicate(pid: str) -> dict:
+    """Legt ein Duplikat an: eigene Parameter, eigenes Script und eigene Tags (Kopie des aktuellen Stands), dieselbe
+    Bilddatei. Gibt die neue Zeile zurück."""
+    import shutil
+
+    con = db()
+    row = _fetch(pid)
+    src = _get(row, "source") or row["path"]
+    used = [int(m.group(2)) for (p,) in con.execute("SELECT path FROM photos WHERE source=?", (src,)) if (m := _DUP_RE.match(p))]
+    n = max(used, default=0) + 1
+    rel = f"{src}{DUP_SEP}{n}"
+    new_id = photo_id(rel)
+    _copy_sidecars(row["path"], rel)
+    if not params_file(rel).exists():  # Original hatte noch keine YAML
+        params_file(rel).parent.mkdir(parents=True, exist_ok=True)
+        params_file(rel).write_text(dump_params(Params()), encoding="utf-8")
+    th = THUMBS / f"{pid}.jpg"
+    if th.exists():
+        THUMBS.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(th, THUMBS / f"{new_id}.jpg")
+    con.execute(
+        "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags,ai_tags,source,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (new_id, rel, row["taken"], row["camera"], row["lens"], row["iso"], row["focal"], row["rating"], row["tags"],
+         row["ai_tags"], src, n))
+    con.commit()
+    rolls = read_rolls()  # Duplikat liegt in derselben Filmrolle wie die Vorlage
+    for paths in rolls.values():
+        if row["path"] in paths:
+            paths.append(rel); write_rolls(rolls); break
+    cats = read_catalogs()  # Duplikat bleibt in denselben Katalogen wie die Vorlage
+    changed = False
+    for paths in cats.values():
+        if row["path"] in paths:
+            paths.append(rel); changed = True
+    if changed:
+        write_catalogs(cats)
+    return dict(_fetch(new_id))
+
+
+def delete_duplicate(pid: str) -> None:
+    """Löscht ein Duplikat samt Parametern, Script und Tags. Originale lassen sich hier nie löschen."""
+    row = _fetch(pid)
+    if not is_duplicate(row):
+        raise ValueError("Nur Duplikate können gelöscht werden, nie das Original.")
+    rel = row["path"]
+    for f in (params_file(rel), script_file(rel), ai_tags_file(rel), THUMBS / f"{pid}.jpg", *VIEWS.glob(f"{pid}*.jpg")):
+        try:
+            f.unlink()
+        except FileNotFoundError:
+            pass
+    con = db()
+    con.execute("DELETE FROM photos WHERE id=?", (pid,))
+    con.commit()
+    for rd, wr in ((read_catalogs, write_catalogs), (read_rolls, write_rolls)):
+        cats = rd()
+        if any(rel in ps for ps in cats.values()):
+            wr({n: [p for p in ps if p != rel] for n, ps in cats.items()})
+    _STATE_CACHE.pop(rel, None)
+
+
+def restore_duplicates() -> int:
+    """Nach Neuaufbau des Index: Duplikate aus den Parameterdateien («<Original>~d<Nr>.yaml») wieder eintragen."""
+    import shutil
+
+    con, n = db(), 0
+    if not PARAMS_DIR.exists():
+        return 0
+    for f in sorted(PARAMS_DIR.rglob(f"*{DUP_SEP}*.yaml")):
+        rel = f.relative_to(PARAMS_DIR).as_posix()[: -len(".yaml")]
+        m = _DUP_RE.match(rel)
+        if not m or con.execute("SELECT 1 FROM photos WHERE id=?", (photo_id(rel),)).fetchone():
+            continue
+        src_row = con.execute("SELECT * FROM photos WHERE path=?", (m.group(1),)).fetchone()
+        if not src_row:  # Original (noch) nicht im Index oder Datei weg
+            continue
+        try:
+            p = load_params(f.read_text(encoding="utf-8"), PRESETS_DIR)
+            ai = (read_ai_tags(rel) or {}).get("tags", [])
+        except Exception:
+            continue
+        pid = photo_id(rel)
+        con.execute(
+            "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags,ai_tags,source,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (pid, rel, src_row["taken"], src_row["camera"], src_row["lens"], src_row["iso"], src_row["focal"], p.rating,
+             json.dumps(p.tags, ensure_ascii=False), json.dumps(ai, ensure_ascii=False), m.group(1), int(m.group(2))))
+        rolls = read_rolls()
+        for paths in rolls.values():
+            if m.group(1) in paths and rel not in paths:
+                paths.append(rel); write_rolls(rolls); break
+        th = THUMBS / f"{src_row['id']}.jpg"
+        if th.exists() and not (THUMBS / f"{pid}.jpg").exists():
+            shutil.copy2(th, THUMBS / f"{pid}.jpg")
+        n += 1
+    con.commit()
+    return n
+
+
+# ---------- Kataloge (manuelle Sammlungen, fotoübergreifend wie in Lightroom/darktable «Sammlungen») ----------
+def read_catalogs(file: Path | None = None) -> dict[str, list[str]]:
+    import yaml
+
+    file = file or CATALOGS_FILE
+    try:
+        data = yaml.safe_load(file.read_text(encoding="utf-8")) if file.exists() else None
+    except (OSError, yaml.YAMLError):
+        data = None
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): [str(x) for x in (v or [])] for k, v in data.items()}
+
+
+def write_catalogs(cats: dict[str, list[str]], file: Path | None = None) -> None:
+    import yaml
+
+    file = file or CATALOGS_FILE
+    file.parent.mkdir(parents=True, exist_ok=True)
+    clean = {n: sorted(dict.fromkeys(ps)) for n, ps in sorted(cats.items(), key=lambda x: x[0].casefold())}
+    file.write_text(yaml.safe_dump(clean, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
+
+
+def _cat_name(name: str) -> str:
+    n = " ".join((name or "").split())
+    if not n or len(n) > 60:
+        raise ValueError("Der Katalogname darf nicht leer und höchstens 60 Zeichen lang sein.")
+    return n
+
+
+def _paths(ids: list[str]) -> list[str]:
+    con = db()
+    return [r[0] for i in ids for r in con.execute("SELECT path FROM photos WHERE id=?", (i,))]
+
+
+def catalog_add(name: str, ids: list[str] | None = None) -> dict:
+    """Legt den Katalog an (falls neu) und fügt Fotos hinzu. Ein Foto kann in beliebig vielen Katalogen sein."""
+    name = _cat_name(name)
+    cats = read_catalogs()
+    have = cats.setdefault(name, [])
+    new = [p for p in _paths(ids or []) if p not in have]
+    have.extend(new)
+    write_catalogs(cats)
+    return {"name": name, "hinzugefuegt": len(new), "gesamt": len(have)}
+
+
+def catalog_remove(name: str, ids: list[str]) -> int:
+    cats = read_catalogs()
+    if name not in cats:
+        raise KeyError(name)
+    gone = set(_paths(ids))
+    before = len(cats[name])
+    cats[name] = [p for p in cats[name] if p not in gone]
+    write_catalogs(cats)
+    return before - len(cats[name])
+
+
+def catalog_delete(name: str) -> None:
+    """Löscht nur den Katalog, nie die Fotos."""
+    cats = read_catalogs()
+    if cats.pop(name, None) is None:
+        raise KeyError(name)
+    write_catalogs(cats)
+
+
+def catalog_rename(name: str, new: str) -> str:
+    new = _cat_name(new)
+    cats = read_catalogs()
+    if name not in cats:
+        raise KeyError(name)
+    if new != name and new in cats:
+        raise ValueError(f"Es gibt schon einen Katalog «{new}». Zum Vereinen «Zusammenführen» verwenden.")
+    cats = {(new if k == name else k): v for k, v in cats.items()}
+    write_catalogs(cats)
+    return new
+
+
+def catalog_merge(src: str, dst: str) -> dict:
+    """Führt Katalog `src` in `dst` zusammen (Fotos ohne Doppelte); `src` verschwindet, die Fotos bleiben unberührt."""
+    cats = read_catalogs()
+    if src not in cats or dst not in cats:
+        raise KeyError(src if src not in cats else dst)
+    if src == dst:
+        raise ValueError("Quelle und Ziel sind derselbe Katalog.")
+    new = [p for p in cats[src] if p not in cats[dst]]
+    cats[dst].extend(new)
+    del cats[src]
+    write_catalogs(cats)
+    return {"ziel": dst, "hinzugefuegt": len(new), "gesamt": len(cats[dst])}
+
+
+# ---------- Metadaten bearbeiten (Bewertung, Tags) direkt im YAML-Text, Kommentare bleiben erhalten ----------
+def yaml_set(text: str, key: str, value) -> str:
+    """Setzt einen Wert auf oberster Ebene (Zahl oder Liste von Wörtern); entfernt eine bestehende Definition samt Block-Liste."""
+    import yaml as _y
+
+    if isinstance(value, list):
+        rendered = f"{key}: " + _y.safe_dump(value, allow_unicode=True, default_flow_style=True, width=10**6).strip()
+    else:
+        rendered = f"{key}: {int(value)}"
+    pat = re.compile(rf"^{re.escape(key)}[ \t]*:[^\n]*(?:\n(?:[ \t]+[^\n]*|-[ \t][^\n]*))*", re.M)
+    if pat.search(text):
+        return pat.sub(lambda m: rendered, text, count=1)
+    return text + ("" if text.endswith("\n") or not text else "\n") + rendered + "\n"
+
+
+def set_meta(pid: str, rating: int | None = None, tags: list[str] | None = None) -> Params:
+    row = _fetch(pid)
+    f = params_file(row["path"])
+    text = f.read_text(encoding="utf-8") if f.exists() else dump_params(Params())
+    if rating is not None:
+        text = yaml_set(text, "rating", max(0, min(5, int(rating))))
+    if tags is not None:
+        clean = list(dict.fromkeys(" ".join(t.split()) for t in tags if t and t.strip()))
+        text = yaml_set(text, "tags", clean)
+    p = load_params(text, PRESETS_DIR)  # prüft, bevor geschrieben wird
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text, encoding="utf-8")
+    sync_index(pid, p)
+    return p
+
+
+# ---------- Detailansicht ----------
+_EXIF_CACHE: dict = {}
+
+
+def read_exif_full(path: Path) -> dict:
+    """EXIF für die Lupe: zusätzlich Blende, Belichtungszeit und Auflösung. Gecacht."""
+    key = (str(path), path.stat().st_mtime_ns if path.exists() else 0)
+    if key in _EXIF_CACHE:
+        return _EXIF_CACHE[key]
+    out = read_exif(path) | {"aperture": None, "shutter": None, "width": None, "height": None}
+    try:
+        import exifread
+
+        with open(path, "rb") as f:
+            t = exifread.process_file(f, details=False)
+        if "EXIF FNumber" in t:
+            v = t["EXIF FNumber"].values[0]
+            out["aperture"] = round(float(v.num) / float(v.den), 1) if hasattr(v, "num") else float(v)
+        if "EXIF ExposureTime" in t:
+            out["shutter"] = str(t["EXIF ExposureTime"])
+    except Exception:
+        pass
+    try:
+        if path.suffix.lower() in RAW_EXT:
+            import rawpy
+
+            with rawpy.imread(str(path)) as raw:
+                out["width"], out["height"] = int(raw.sizes.width), int(raw.sizes.height)
+        else:
+            h, w = cv2.imread(str(path)).shape[:2]
+            out["width"], out["height"] = w, h
+    except Exception:
+        pass
+    _EXIF_CACHE[key] = out
+    return out
+
+
+def photo_info(pid: str) -> dict:
+    row = _fetch(pid)
+    rel = row["path"]
+    raw = raw_path(row)
+    ex = read_exif_full(raw) if raw.exists() else {}
+    pf = params_file(rel)
+    changed: list[str] = []
+    if pf.exists():
+        try:
+            cur = load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR).model_dump(exclude_none=True)
+            base = Params().model_dump(exclude_none=True)
+            changed = sorted(k for k, v in cur.items() if k not in _NOT_EDIT and base.get(k) != v)
+        except Exception:
+            pass
+    src = _get(row, "source") or rel
+    siblings = [{"id": r["id"], "version": r["version"] or 0, "is_duplicate": bool(r["source"])}
+                for r in db().execute("SELECT id, version, source FROM photos WHERE COALESCE(source, path)=? ORDER BY version", (src,))]
+    st = edit_state(rel)
+    return {
+        "id": pid, "path": rel, "file": Path(src).name, "roll": read_roll_of(rel), "date": date_of(row), "is_duplicate": is_duplicate(row),
+        "version": row["version"] or 0, "size": raw.stat().st_size if raw.exists() else None, "exif": ex,
+        "rating": row["rating"], "tags": json.loads(row["tags"]), "ai_tags": json.loads(row["ai_tags"] or "[]"),
+        "catalogs": sorted(n for n, ps in read_catalogs().items() if rel in ps), "versions": siblings,
+        "changed": changed, **st,
+    }
+
+
+# ---------- Bibliothek auf dem Laufwerk nach Jahr/Monat/Tag ordnen ----------
+def target_rel(row) -> str | None:
+    """Soll-Pfad «JJJJ/MM/TT/Dateiname» aus dem Aufnahmedatum; None ohne Datum."""
+    r = date_of(row)
+    return None if r == "ohne Datum" else f"{r}/{Path(row['path']).name}"
+
+
+def _free_name(rel: str, taken: set[str]) -> str:
+    """Gibt `rel` zurück oder hängt _1, _2 … an, wenn dort schon eine andere Datei liegt."""
+    p, n = Path(rel), 0
+    while True:
+        cand = rel if n == 0 else (p.parent / f"{p.stem}_{n}{p.suffix}").as_posix()
+        if cand not in taken and not (LIBRARY / cand).exists():
+            return cand
+        n += 1
+
+
+def organize_plan() -> dict:
+    """Berechnet, welche Originale wohin verschoben würden (ohne etwas zu ändern)."""
+    moves, ohne, taken = [], [], set()
+    for r in db().execute("SELECT * FROM photos WHERE source IS NULL ORDER BY path"):
+        if not (LIBRARY / r["path"]).exists():
+            continue  # Datei fehlt: nichts zu verschieben
+        t = target_rel(r)
+        if t is None:
+            ohne.append(r["path"]); continue
+        if t == r["path"]:
+            continue
+        t = _free_name(t, taken); taken.add(t)
+        moves.append({"id": r["id"], "von": r["path"], "nach": t})
+    return {"verschieben": moves, "ohne_datum": ohne}
+
+
+def _rename(old: Path, new: Path) -> None:
+    if old.exists():
+        new.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(old, new)
+
+
+def _move_one(con, row_id: str, old: str, new: str, cats: dict, rolls: dict) -> None:
+    """Verschiebt Datei, XMPs und alle Metadaten (Original und Duplikate) von `old` nach `new`."""
+    src = LIBRARY / old
+    dst = LIBRARY / new
+    if dst.exists():
+        raise FileExistsError(new)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(src, dst)  # schlägt fehl, wenn nicht schreibbar: dann ist noch nichts verändert
+    try:
+        for xo, xn in ((src.with_name(src.name + ".xmp"), dst.with_name(dst.name + ".xmp")), (src.with_suffix(".xmp"), dst.with_suffix(".xmp"))):
+            if xo.exists() and not xn.exists():
+                _rename(xo, xn)
+        group = [(r["id"], r["path"], r["version"] or 0) for r in con.execute("SELECT id, path, version FROM photos WHERE path=? OR source=?", (old, old))]
+        for pid, path, ver in group:
+            npath = new if not ver else f"{new}{DUP_SEP}{ver}"
+            nid = photo_id(npath)
+            for f_of in (params_file, script_file, ai_tags_file):
+                _rename(f_of(path), f_of(npath))
+            _rename(THUMBS / f"{pid}.jpg", THUMBS / f"{nid}.jpg")
+            for v in VIEWS.glob(f"{pid}-*.jpg"):
+                v.unlink()
+            con.execute("UPDATE photos SET id=?, path=?, source=CASE WHEN source IS NULL THEN NULL ELSE ? END WHERE id=?", (nid, npath, new, pid))
+            for ps in (*cats.values(), *rolls.values()):
+                ps[:] = [npath if p == path else p for p in ps]
+            _STATE_CACHE.pop(path, None)
+        con.commit()
+    except Exception:
+        raise
+
+
+def organize(ids: list[str] | None = None) -> dict:
+    """Ordnet die Originale physisch nach JJJJ/MM/TT (Aufnahmedatum). Leere Ordner werden entfernt.
+    Parameter, Scripts, KI-Tags, Duplikate und Katalog-Zuordnungen wandern mit."""
+    plan = organize_plan()
+    wanted = set(ids) if ids else None
+    con, cats, rolls = db(), read_catalogs(), read_rolls()
+    done, fehler = 0, []
+    for m in plan["verschieben"]:
+        if wanted is not None and m["id"] not in wanted:
+            continue
+        try:
+            _move_one(con, m["id"], m["von"], m["nach"], cats, rolls)
+            done += 1
+        except Exception as e:  # ein Fehler (z. B. schreibgeschützt) stoppt nicht den Rest
+            fehler.append(f"{m['von']}: {e}")
+    write_catalogs(cats)
+    write_rolls(rolls)
+    for d in sorted((p for p in LIBRARY.rglob("*") if p.is_dir() and p != DATA and DATA not in p.parents), key=lambda p: len(p.parts), reverse=True):
+        try:
+            d.rmdir()  # nur leere Ordner
+        except OSError:
+            pass
+    return {"verschoben": done, "ohne_datum": len(plan["ohne_datum"]), "fehler": fehler}
+
+
+# ---------- Filmrollen (virtuell, wie in darktable: jedes Foto in höchstens einer) ----------
+def read_rolls() -> dict[str, list[str]]:
+    return read_catalogs(ROLLS_FILE)
+
+
+def write_rolls(rolls: dict[str, list[str]]) -> None:
+    write_catalogs(rolls, ROLLS_FILE)
+
+
+def read_roll_of(rel: str) -> str:
+    return next((n for n, ps in read_rolls().items() if rel in ps), NO_ROLL)
+
+
+def _roll_name(name: str) -> str:
+    n = _cat_name(name)
+    if n == NO_ROLL:
+        raise ValueError(f"«{NO_ROLL}» ist ein reservierter Name.")
+    return n
+
+
+def roll_move(name: str, ids: list[str] | None = None) -> dict:
+    """Legt die Filmrolle an (falls neu) und verschiebt die Fotos hinein (aus ihrer bisherigen Rolle).
+    Duplikate folgen ihrem Original. Mit name == NO_ROLL werden die Fotos aus ihrer Rolle genommen."""
+    rolls = read_rolls()
+    paths = _paths(ids or [])
+    con = db()
+    for pth in list(paths):  # Duplikate gehören immer zur Rolle ihres Originals
+        paths += [r[0] for r in con.execute("SELECT path FROM photos WHERE source=?", (pth,))]
+    paths = list(dict.fromkeys(paths))
+    if name == NO_ROLL:
+        target = None
+    else:
+        name = _roll_name(name)
+        target = rolls.setdefault(name, [])
+    gone = set(paths)
+    for ps in rolls.values():
+        ps[:] = [p for p in ps if p not in gone]
+    if target is not None:
+        target.extend(paths)
+    write_rolls(rolls)
+    return {"name": name, "verschoben": len(paths), "gesamt": len(rolls.get(name, []))}
+
+
+def roll_rename(name: str, new: str) -> str:
+    new = _roll_name(new)
+    rolls = read_rolls()
+    if name not in rolls:
+        raise KeyError(name)
+    if new != name and new in rolls:
+        raise ValueError(f"Es gibt schon eine Filmrolle «{new}».")
+    write_rolls({(new if k == name else k): v for k, v in rolls.items()})
+    return new
+
+
+def roll_delete(name: str) -> int:
+    """Löscht die Filmrolle; ihre Fotos bleiben erhalten und stehen danach unter «Ohne Filmrolle»."""
+    rolls = read_rolls()
+    gone = rolls.pop(name, None)
+    if gone is None:
+        raise KeyError(name)
+    write_rolls(rolls)
+    return len(gone)
