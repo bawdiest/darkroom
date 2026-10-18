@@ -176,7 +176,7 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
     if p.lens.enabled:
         from . import lenscorr
 
-        headers["X-Lens-Status"] = quote(lenscorr.status(catalog.LIBRARY / row["path"]))
+        headers["X-Lens-Status"] = quote(lenscorr.vignette_report(catalog.LIBRARY / row["path"]) if p.lens.vignetting else lenscorr.status(catalog.LIBRARY / row["path"]))
     return Response(to_jpeg(to_uint8(img)), media_type="image/jpeg", headers=headers)
 
 

@@ -22,7 +22,17 @@ class FakeCam: crop_factor = 1.5
 class FakeModifier:
     def __init__(self, lens, crop, w, h): self.w, self.h = w, h
     def initialize(self, focal, ap, dist, scale=1.0): FakeModifier.init_args = (focal, ap, dist, scale)
-    def apply_color_modification(self, img): img *= 1.1  # «Vignettierung»: heller
+    gain = "radial"
+
+    def apply_color_modification(self, img):
+        h, w = img.shape[:2]
+        if FakeModifier.gain == "radial":  # Mitte 1.0, Ecken heller, symmetrisch
+            y, x = np.mgrid[0:h, 0:w]
+            r = np.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2)) / np.sqrt(2)
+            img *= (1 + 0.6 * r ** 2)[..., None].astype(np.float32)
+        elif FakeModifier.gain == "left_blown":  # Fehlerbild: links viel zu hell
+            img *= np.linspace(8.0, 1.0, w, dtype=np.float32)[None, :, None]
+        return True
     def apply_subpixel_geometry_distortion(self):
         xs, ys = np.meshgrid(np.arange(self.w, dtype=np.float32) + 1, np.arange(self.h, dtype=np.float32))  # 1 px verschoben
         c = np.stack([xs, ys], -1)
@@ -54,12 +64,25 @@ class Lens(unittest.TestCase):
         return mock.patch.multiple(lenscorr, lensfunpy=fake_module(), _exif=lambda p, m: exif)
 
     def test_applies_vignetting_and_distortion(self):
+        FakeModifier.gain = "radial"
         with self.patch():
             out = lenscorr.apply(self.img, self.path, LensProfile(enabled=True))
         self.assertEqual(out.shape, self.img.shape)
         self.assertFalse(np.allclose(out, self.img))
-        self.assertAlmostEqual(float(out[24, 10, 0]), float(self.img[24, 11, 0] * 1.1), places=3)  # verschoben + heller
+        self.assertAlmostEqual(float(out[24, 32, 0]), float(self.img[24, 33, 0]), delta=0.01)  # Mitte: kaum heller, 1 px verschoben
+        self.assertGreater(float(out[2, 60, 0]), float(self.img[2, 61, 0]) * 1.3)  # Ecke heller
         self.assertEqual(FakeModifier.init_args, (35.0, 4.0, 1000.0, 0.0))
+
+    def test_implausible_vignetting_is_skipped_not_applied(self):
+        FakeModifier.gain = "left_blown"  # wie im gemeldeten Fehlerbild: linke Bildhälfte ausgebrannt
+        try:
+            with self.patch():
+                out = lenscorr.apply(self.img, self.path, LensProfile(enabled=True, distortion=False, tca=False))
+                report = lenscorr.vignette_report(self.path)
+            np.testing.assert_allclose(out, self.img)  # unverändert
+            self.assertIn("übersprungen", report)
+        finally:
+            FakeModifier.gain = "radial"
 
     def test_switches(self):
         with self.patch():

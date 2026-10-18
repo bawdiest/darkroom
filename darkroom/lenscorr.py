@@ -74,6 +74,30 @@ def status(path: Path) -> str:
     return find_profile(path)["message"]
 
 
+MAX_GAIN = 3.0  # stärkste plausible Aufhellung in den Ecken
+
+
+def vignette_gain(mod, h: int, w: int) -> tuple[np.ndarray | None, str]:
+    """Aufhellungsfaktor (H, W, 1) aus lensfun, oder (None, Grund), wenn er unplausibel ist.
+    Ein Fehlprofil oder ein Fehler in der Anbindung darf das Bild nicht ausbrennen: geprüft wird, dass der Faktor endlich ist,
+    in der Mitte ungefähr 1 beträgt, rechts und links ähnlich ausfällt und nirgends über MAX_GAIN liegt."""
+    ones = np.ones((h, w, 3), np.float32)
+    if not mod.apply_color_modification(ones):
+        return None, "Vignettierung: lensfun liefert keine Korrektur"
+    g = ones[..., 1]
+    if not np.isfinite(g).all():
+        return None, "Vignettierung übersprungen (ungültige Werte)"
+    cy, cx = h // 2, w // 2
+    centre, left, right = float(g[cy, cx]), float(g[cy, 0]), float(g[cy, w - 1])
+    top, bottom = float(g[0, cx]), float(g[h - 1, cx])
+    info = f"Mitte {centre:.2f}, links {left:.2f}, rechts {right:.2f}, oben {top:.2f}, unten {bottom:.2f}"
+    if not 0.9 <= centre <= 1.15 or float(g.max()) > MAX_GAIN or float(g.min()) < 0.8:
+        return None, f"Vignettierung übersprungen, unplausibel ({info}, max {float(g.max()):.2f})"
+    if max(left, right) / max(min(left, right), 1e-3) > 1.25 or max(top, bottom) / max(min(top, bottom), 1e-3) > 1.25:
+        return None, f"Vignettierung übersprungen, nicht symmetrisch ({info})"
+    return g[..., None].copy(), info
+
+
 def apply(img: np.ndarray, path: Path, lens_params) -> np.ndarray:
     """Wendet die Korrektur auf ein lineares float32-Bild (H, W, 3, RGB) an. Ohne Profil: unverändert."""
     prof = find_profile(path)
@@ -82,9 +106,11 @@ def apply(img: np.ndarray, path: Path, lens_params) -> np.ndarray:
     h, w = img.shape[:2]
     mod = lensfunpy.Modifier(prof["lens"], prof["cam"].crop_factor, w, h)
     mod.initialize(prof["focal"], prof["aperture"], prof["distance"], scale=0.0)  # 0 = automatisch füllen
-    out = np.array(img, dtype=np.float32, order="C", copy=True)  # lensfun arbeitet in place
+    out = np.array(img, dtype=np.float32, order="C", copy=True)
     if getattr(lens_params, "vignetting", True):
-        mod.apply_color_modification(out)  # Vignettierung, Daten sind linear
+        gain, _ = vignette_gain(mod, h, w)  # Vignettierung; Daten sind linear
+        if gain is not None:
+            out = out * gain
     if getattr(lens_params, "tca", True) and getattr(lens_params, "distortion", True):
         coords = mod.apply_subpixel_geometry_distortion()  # (H, W, 3, 2): pro Farbkanal, korrigiert Farbsäume mit
         chans = [cv2.remap(out[..., c], np.ascontiguousarray(coords[:, :, c, :]), None, cv2.INTER_LINEAR,
@@ -94,3 +120,14 @@ def apply(img: np.ndarray, path: Path, lens_params) -> np.ndarray:
         coords = mod.apply_geometry_distortion()
         out = cv2.remap(out, np.ascontiguousarray(coords), None, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     return np.clip(out, 0, None)
+
+
+def vignette_report(path: Path, size: tuple[int, int] = (600, 400)) -> str:
+    """Kurzer Befund zur Vignettierung (für die Statuszeile und zur Fehlersuche)."""
+    prof = find_profile(path)
+    if not prof["ok"]:
+        return prof["message"]
+    w, h = size
+    mod = lensfunpy.Modifier(prof["lens"], prof["cam"].crop_factor, w, h)
+    mod.initialize(prof["focal"], prof["aperture"], prof["distance"], scale=0.0)
+    return f"{prof['message']} | {vignette_gain(mod, h, w)[1]}"
