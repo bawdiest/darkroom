@@ -1,0 +1,6 @@
+.env
+__pycache__/
+.pytest_cache/
+data/cache/
+data/exports/
+_to_delete/

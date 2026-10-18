@@ -1,0 +1,10 @@
+exposure: 0.3
+contrast: 8
+highlights: -20
+shadows: 15
+wb:
+  temp: 5800
+  tint: 5
+sharpen:
+  amount: 0.4
+  radius: 0.8

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Darkroom</title>
+<style>
+  :root { --bg:#1b1b1d; --panel:#242427; --line:#37373c; --fg:#e4e4e7; --mute:#8d8d95; --acc:#e0a24a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; gap:12px; align-items:center; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0 12px 0 0; letter-spacing:.04em; }
+  button, select, input { background:#2e2e33; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); }
+  button.on { background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
+  .spacer { flex:1; }
+  main { flex:1; min-height:0; display:flex; }
+  #filters { width:210px; padding:12px; border-right:1px solid var(--line); overflow:auto; display:flex; flex-direction:column; gap:10px; }
+  #filters label { color:var(--mute); font-size:12px; display:block; margin-bottom:3px; }
+  #filters select, #filters input { width:100%; }
+  #grid { flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; align-content:start; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
+  .card:hover { border-color:var(--acc); }
+  .card img { width:100%; aspect-ratio:3/2; object-fit:cover; display:block; background:#111; }
+  .card .meta { padding:5px 8px; font-size:12px; color:var(--mute); display:flex; justify-content:space-between; white-space:nowrap; overflow:hidden; }
+  #dark { flex:1; display:none; min-width:0; }
+  #preview { flex:1; display:flex; align-items:center; justify-content:center; background:#111; min-width:0; position:relative; }
+  #preview img { max-width:100%; max-height:100%; }
+  #status { position:absolute; left:10px; bottom:10px; color:var(--mute); font-size:12px; }
+  #side { width:400px; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--panel); }
+  #side .bar { display:flex; gap:8px; padding:8px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  #editor { flex:1; width:100%; background:#18181a; color:var(--fg); border:0; resize:none; padding:12px; font:13px/1.5 ui-monospace, Menlo, monospace; outline:none; tab-size:2; }
+  .tabs { display:flex; gap:6px; align-items:center; padding:8px 8px 0; }
+  .tabs button { border-radius:6px 6px 0 0; border-bottom:0; }
+  .pane { flex:1; min-height:0; display:flex; flex-direction:column; }
+  #desc { height:84px; flex:none; background:#18181a; color:var(--fg); border:0; border-bottom:1px solid var(--line); resize:vertical; padding:10px 12px; font:13px/1.4 system-ui, sans-serif; outline:none; }
+  #sbx { font-size:11px; color:var(--mute); } #sbx.bad { color:#ff7b72; }
+  #genStatus { font-size:12px; color:var(--mute); white-space:pre-wrap; }
+  .foot { border-top:1px solid var(--line); border-bottom:0 !important; }
+  #err { color:#ff7b72; padding:6px 12px; font-size:12px; min-height:26px; border-top:1px solid var(--line); white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DARKROOM</h1>
+  <button id="tabLight" class="on">Leuchttisch</button>
+  <button id="tabDark" disabled>Dunkelkammer</button>
+  <span class="spacer"></span>
+  <span id="lightTools">
+    <button id="scan">Bibliothek scannen</button>
+    <button id="ai" title="KI-Funktionen folgen">KI ▾</button>
+    <button id="exportXmp">XMP exportieren</button>
+  </span>
+</header>
+<main>
+  <section id="lighttable" style="display:flex; flex:1; min-width:0;">
+    <aside id="filters">
+      <div><label>Suche</label><input id="fq" placeholder="Name oder Tag"></div>
+      <div><label>Kamera</label><select id="fcam"><option value="">alle</option></select></div>
+      <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
+      <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+      <div><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
+      <div id="count" style="color:var(--mute)"></div>
+    </aside>
+    <div id="grid"></div>
+  </section>
+  <section id="dark">
+    <div style="display:flex; height:100%;">
+      <div id="preview"><img id="pimg" alt=""><div id="status"></div></div>
+      <div id="side">
+        <div class="tabs">
+          <button id="tabYaml" class="on">Parameter</button>
+          <button id="tabScript">Script</button>
+          <span class="spacer"></span><span id="sbx"></span>
+        </div>
+        <div id="paneYaml" class="pane">
+          <div class="bar">
+            <select id="presetSel"><option value="">Preset einfügen…</option></select>
+            <button id="savePreset">Als Preset speichern</button>
+          </div>
+          <textarea id="editor" spellcheck="false"></textarea>
+        </div>
+        <div id="paneScript" class="pane" style="display:none">
+          <textarea id="desc" placeholder="Beschreibe, was mit dem Foto passieren soll, z. B. «Himmel etwas abdunkeln, Schatten weniger rauschen» …"></textarea>
+          <div class="bar"><button id="gen">Code erzeugen</button><span id="genStatus"></span></div>
+          <div class="bar">
+            <select id="spSel"><option value="">Script-Preset laden…</option></select>
+            <button id="saveSp">Als Script-Preset speichern</button>
+          </div>
+          <textarea id="scriptEditor" spellcheck="false" placeholder="Noch kein Script. Beschreibung oben eingeben und «Code erzeugen» drücken oder selbst schreiben: def process(img, p): ..."></textarea>
+        </div>
+        <div class="bar foot">
+          <button id="save">Speichern (Strg+S)</button>
+          <button id="run" title="Strg+Enter">Vorschau</button>
+          <select id="profSel"></select>
+          <button id="exportBtn">Exportieren</button>
+        </div>
+        <div id="err"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let current = null, timer = null, seq = 0;
+
+async function api(url, opt) {
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error((await r.json().catch(()=>({detail:r.statusText}))).detail);
+  return r;
+}
+
+// ---------- Leuchttisch ----------
+async function loadFacets() {
+  const f = await (await api('/api/facets')).json();
+  const fill = (sel, arr) => { const el = $(sel), v = el.value; el.length = 1; arr.forEach(x => el.add(new Option(x, x))); el.value = v; };
+  fill('#fcam', f.cameras); fill('#flens', f.lenses); fill('#ftag', f.tags);
+}
+async function loadGrid() {
+  const p = new URLSearchParams({ q:$('#fq').value, camera:$('#fcam').value, lens:$('#flens').value, min_rating:$('#frate').value, tag:$('#ftag').value });
+  for (const [k,v] of [...p]) if (!v) p.delete(k);
+  const list = await (await api('/api/photos?' + p)).json();
+  $('#count').textContent = list.length + ' Fotos';
+  $('#grid').innerHTML = '';
+  for (const ph of list) {
+    const d = document.createElement('div'); d.className = 'card';
+    d.innerHTML = `<img loading="lazy" src="/api/thumb/${ph.id}"><div class="meta"><span>${ph.path.split('/').pop()}</span><span>${'★'.repeat(ph.rating)}</span></div>`;
+    d.onclick = () => openDark(ph);
+    $('#grid').appendChild(d);
+  }
+}
+['#fq','#fcam','#flens','#frate','#ftag'].forEach(s => $(s).addEventListener('input', loadGrid));
+$('#scan').onclick = async () => {
+  $('#scan').textContent = 'Scanne…';
+  try { const s = await (await api('/api/scan', {method:'POST'})).json();
+    alert(`Neu: ${s.neu}\nXMP importiert: ${s.xmp_importiert}\nBereits vorhanden: ${s.vorhanden}` + (s.fehler.length ? `\nFehler:\n${s.fehler.join('\n')}` : '')); }
+  catch (e) { alert(e.message); }
+  $('#scan').textContent = 'Bibliothek scannen'; await loadFacets(); await loadGrid();
+};
+$('#ai').onclick = () => alert('KI-Funktionen (automatisch taggen u. a.) folgen im nächsten Schritt.');
+$('#exportXmp').onclick = async () => {
+  if (!confirm('XMP-Dateien für alle Fotos neben die Originale schreiben? Bestehende XMPs werden als .bak gesichert.')) return;
+  const r = await (await api('/api/export-xmp', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})).json();
+  alert(r.geschrieben + ' XMP-Dateien geschrieben.');
+};
+
+// ---------- Dunkelkammer ----------
+function show(view) {
+  $('#lighttable').style.display = view === 'light' ? 'flex' : 'none';
+  $('#dark').style.display = view === 'dark' ? 'block' : 'none';
+  $('#lightTools').style.display = view === 'light' ? '' : 'none';
+  $('#tabLight').classList.toggle('on', view === 'light');
+  $('#tabDark').classList.toggle('on', view === 'dark');
+}
+$('#tabLight').onclick = () => { show('light'); loadGrid(); };
+$('#tabDark').onclick = () => current && show('dark');
+
+async function openDark(ph) {
+  current = ph; $('#tabDark').disabled = false; show('dark');
+  $('#err').textContent = '';
+  $('#editor').value = (await (await api(`/api/photos/${ph.id}/params`)).json()).yaml;
+  $('#scriptEditor').value = (await (await api(`/api/photos/${ph.id}/script`)).json()).script;
+  $('#desc').value = ''; $('#genStatus').textContent = '';
+  const pre = await (await api('/api/presets')).json();
+  const sel = $('#presetSel'); sel.length = 1; pre.forEach(n => sel.add(new Option(n, n)));
+  const sp = await (await api('/api/script-presets')).json();
+  const ssel = $('#spSel'); ssel.length = 1; sp.forEach(n => ssel.add(new Option(n, n)));
+  renderPreview();
+}
+async function renderPreview() {
+  const my = ++seq; $('#status').textContent = 'rendert…';
+  try {
+    const r = await api(`/api/photos/${current.id}/preview`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({yaml:$('#editor').value, script:$('#scriptEditor').value})});
+    if (my !== seq) return;
+    const url = URL.createObjectURL(await r.blob());
+    $('#pimg').onload = () => URL.revokeObjectURL(url);
+    $('#pimg').src = url; $('#err').textContent = ''; $('#status').textContent = '';
+  } catch (e) { if (my === seq) { $('#err').textContent = e.message; $('#status').textContent = ''; } }
+}
+async function save() {
+  const j = body => ({method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  try {
+    await api(`/api/photos/${current.id}/params`, j({yaml:$('#editor').value}));
+    await api(`/api/photos/${current.id}/script`, j({script:$('#scriptEditor').value}));
+    $('#status').textContent = 'gespeichert'; renderPreview();
+  } catch (e) { $('#err').textContent = e.message; }
+}
+$('#save').onclick = save;
+function keys(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); renderPreview(); }
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, e.target.id === 'scriptEditor' ? '    ' : '  '); }
+}
+$('#editor').addEventListener('keydown', keys);
+$('#scriptEditor').addEventListener('keydown', keys);
+// Parameter: Vorschau automatisch nach kurzer Pause. Script-Änderungen laufen erst mit Strg+Enter / «Vorschau».
+$('#editor').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(renderPreview, $('#scriptEditor').value.trim() ? 1500 : 700); });
+$('#run').onclick = renderPreview;
+function tab(which) {
+  $('#paneYaml').style.display = which === 'yaml' ? 'flex' : 'none';
+  $('#paneScript').style.display = which === 'script' ? 'flex' : 'none';
+  $('#tabYaml').classList.toggle('on', which === 'yaml'); $('#tabScript').classList.toggle('on', which === 'script');
+}
+$('#tabYaml').onclick = () => tab('yaml'); $('#tabScript').onclick = () => tab('script');
+
+$('#gen').onclick = async () => {
+  const prompt = $('#desc').value.trim(); if (!prompt) { $('#genStatus').textContent = 'Bitte zuerst beschreiben, was passieren soll.'; return; }
+  $('#gen').disabled = true; $('#genStatus').textContent = 'KI schreibt und testet das Script …';
+  try {
+    const r = await (await api(`/api/photos/${current.id}/generate`, {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, yaml:$('#editor').value, script:$('#scriptEditor').value})})).json();
+    if (r.code) $('#scriptEditor').value = r.code;
+    $('#genStatus').textContent = (r.ok ? `Fertig nach ${r.attempts} Versuch(en). ` : (r.error + ' ')) + (r.explanation || '') + '\n' + r.log.join('\n');
+    if (r.ok) renderPreview();
+  } catch (e) { $('#genStatus').textContent = e.message; }
+  $('#gen').disabled = false;
+};
+$('#spSel').onchange = async e => {
+  if (!e.target.value) return;
+  $('#scriptEditor').value = (await (await api('/api/script-presets/' + e.target.value)).json()).script;
+  e.target.value = ''; renderPreview();
+};
+$('#saveSp').onclick = async () => {
+  const name = prompt('Name des Script-Presets:'); if (!name) return;
+  try { const r = await (await api('/api/script-presets', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, script:$('#scriptEditor').value})})).json();
+    $('#spSel').add(new Option(r.name, r.name)); alert('Script-Preset gespeichert: ' + r.name); }
+  catch (e) { alert(e.message); }
+};
+$('#exportBtn').onclick = async () => {
+  await save();
+  $('#status').textContent = 'exportiere …';
+  try {
+    const r = await api(`/api/photos/${current.id}/export`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile:$('#profSel').value})});
+    const blob = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = current.path.split('/').pop().replace(/\.[^.]+$/, '') + (blob.type.includes('tif') ? '.tif' : '.jpg'); a.click();
+    $('#status').textContent = 'exportiert (auch in data/exports gespeichert)';
+  } catch (e) { $('#err').textContent = e.message; $('#status').textContent = ''; }
+};
+(async () => {
+  const pr = await (await api('/api/output-profiles')).json();
+  Object.entries(pr).forEach(([k, v]) => $('#profSel').add(new Option(`${k} (${v.format}, ${v.color_space}${v.max_side ? ', ' + v.max_side + ' px' : ''})`, k)));
+  const st = await (await api('/api/status')).json();
+  $('#sbx').textContent = 'Sandbox: ' + st.sandbox.description + (st.ai.configured ? '' : ' · KI nicht konfiguriert');
+  $('#sbx').classList.toggle('bad', !st.sandbox.allowed || !st.ai.configured);
+})();
+$('#presetSel').onchange = e => {
+  if (!e.target.value) return;
+  const ed = $('#editor'); ed.value = `preset: ${e.target.value}\n` + ed.value.replace(/^preset:.*\n/m, '');
+  e.target.value = ''; renderPreview();
+};
+$('#savePreset').onclick = async () => {
+  const name = prompt('Name des Presets:'); if (!name) return;
+  try { const r = await (await api('/api/presets', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, yaml:$('#editor').value})})).json();
+    alert('Preset gespeichert: ' + r.name); const sel = $('#presetSel'); sel.add(new Option(r.name, r.name)); }
+  catch (e) { alert(e.message); }
+};
+
+loadFacets(); loadGrid();
+</script>
+</body>
+</html>
