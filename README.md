@@ -105,10 +105,17 @@ mein_profil: { format: jpeg, color_space: adobergb, quality: 92, max_side: 4000 
 
 JPEG bettet immer ein ICC-Profil ein (sRGB oder Adobe RGB). TIFF 16 Bit ist vorerst nur mit sRGB möglich.
 
+## Objektivkorrektur
+
+`lens: {enabled: true}` in der YAML schaltet Verzeichnung, Vignettierung und Farbsäume ein (einzeln mit `distortion`,
+`vignetting`, `tca` auf `false` abschaltbar). Kamera und Objektiv kommen aus den EXIF-Daten, die Profile aus der
+lensfun-Datenbank (Paket `lensfunpy`). Die Statuszeile der Dunkelkammer nennt das gefundene Objektiv oder sagt, warum
+keines gefunden wurde. Das Foto wird vor Tonwerten und Crop korrigiert und mit automatischer Skalierung gefüllt.
+
 ## Grenzen
 
 - Parameter: Belichtung, Kontrast, Lichter/Tiefen/Weiss/Schwarz, Weissabgleich, Crop mit Drehung, Schärfen, Rauschreduzierung.
   Der Look ist eine eigene Näherung und weicht von Lightroom ab. Die Umbenennung auf Lightroom-Feldnamen steht noch aus.
 - XMP-Export schreibt nur die Parameter; **Scripts lassen sich nicht in XMP abbilden** (die Antwort nennt `mit_script`).
 - darktable-XMPs: Rating, Tags und die Liste der Module werden gelesen, nicht die binären Parameter.
-- Lightroom-Katalog (`.lrcat`) wird noch nicht gelesen. Objektivprofil wird importiert/exportiert, aber nicht gerendert.
+- Lightroom-Katalog (`.lrcat`) wird noch nicht gelesen. 

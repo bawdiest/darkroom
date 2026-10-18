@@ -251,7 +251,7 @@ async function renderPreview() {
     if (my !== seq) return;
     const url = URL.createObjectURL(await r.blob());
     $('#pimg').onload = () => URL.revokeObjectURL(url);
-    $('#pimg').src = url; $('#err').textContent = ''; $('#status').textContent = '';
+    $('#pimg').src = url; $('#err').textContent = ''; const ls = r.headers.get('X-Lens-Status'); $('#status').textContent = ls ? decodeURIComponent(ls) : '';
   } catch (e) { if (my === seq) { $('#err').textContent = e.message; $('#status').textContent = ''; } }
 }
 async function save() {

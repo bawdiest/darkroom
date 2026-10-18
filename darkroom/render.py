@@ -143,6 +143,10 @@ def develop(path: Path, p: Params, max_side: int | None = 1600) -> tuple[np.ndar
         if f < 1:
             img = cv2.resize(img, (int(w * f), int(h * f)), interpolation=cv2.INTER_AREA)
             scale *= f
+    if p.lens.enabled and path.suffix.lower() in RAW_EXT | IMG_EXT:
+        from . import lenscorr
+
+        img = lenscorr.apply(img, path, p.lens)  # auf linearen Daten, vor Tonwerten und Crop
     s = _tone(img, p)
     s = _denoise(s, p)
     s = _crop(s, p)

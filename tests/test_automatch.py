@@ -59,6 +59,19 @@ class Fit(unittest.TestCase):
         got = sandbox.run_script(r["script"], ours, {"_scale": 1.0}, timeout=60)
         self.assertLess(float(np.abs(got - TARGET).mean()), r["after"] + 0.01)
 
+    def test_sharpening_detected(self):
+        import cv2
+        blurred = cv2.GaussianBlur(BASE, (0, 0), 1.2)
+        sharp_target = np.clip(_tone(blurred, TRUE) + 1.2 * (_tone(blurred, TRUE) - cv2.GaussianBlur(_tone(blurred, TRUE), (0, 0), 1.0)), 0, 1)
+        with mock.patch.object(automatch, "_embedded_preview", return_value=sharp_target.astype(np.float32)), \
+             mock.patch.object(automatch, "_load_base", return_value=blurred):
+            r = automatch.fit_photo(Path("x.cr2"))
+        self.assertTrue(r["ok"], r)
+        self.assertGreater(r["params"].get("sharpen", {}).get("amount", 0), 0)
+
+    def test_smooth_target_needs_no_sharpening(self):
+        self.assertNotIn("sharpen", self.run_fit()["params"])
+
     def test_identical_image_is_skipped(self):
         r = self.run_fit(_tone(BASE, Params()))
         self.assertFalse(r["ok"])
@@ -90,8 +103,10 @@ class Apply(unittest.TestCase):
         pf = catalog.params_file(self.rel)
         res = {"ok": True, "params": {"exposure": 0.7, "contrast": 20, "highlights": 0, "shadows": 10, "whites": 0, "blacks": 0},
                "before": 0.1, "after": 0.03}
+        res["params"]["sharpen"] = {"amount": 0.6, "radius": 1.0}
         self.assertTrue(automatch.apply_result(self.row, res, automatch._stamp(self.rel)))
         p = load_params(pf.read_text())
+        self.assertEqual(p.sharpen.amount, 0.6)
         self.assertEqual((p.exposure, p.contrast, p.shadows), (0.7, 20, 10))
         self.assertFalse(catalog.edit_state(self.rel)["edited"])
         self.assertNotIn(self.rel, [c["path"] for c in automatch.candidates()])  # wird nicht noch einmal bearbeitet

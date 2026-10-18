@@ -17,8 +17,8 @@ import cv2
 import numpy as np
 
 from . import catalog
-from .render import RAW_EXT, _load_base, _tone
-from .schema import Params, dump_params, load_params
+from .render import RAW_EXT, _load_base, _sharpen, _tone
+from .schema import Params, Sharpen, dump_params, load_params
 
 FIT_SIDE = 192  # Kantenlänge für den Vergleich
 MIN_IMPROVEMENT = 0.10  # mindestens 10 % weniger Abweichung als ohne Anpassung
@@ -63,6 +63,28 @@ def _params(vec) -> Params:
     return Params(**{name: float(v) for (name, *_), v in zip(FIELDS, vec)})
 
 
+def _detail(img: np.ndarray) -> float:
+    """Mittlere Betrag der Laplace-Antwort der Helligkeit: Mass für Detailkontrast/Schärfe."""
+    lum = img @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    return float(np.abs(cv2.Laplacian(lum, cv2.CV_32F, ksize=3)).mean())
+
+
+SHARPEN_STEPS = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.25, 1.5]
+
+
+def _fit_sharpen(base512: np.ndarray, p: Params, target512: np.ndarray) -> float:
+    """Schärfungsmenge, bei der die Detailenergie dem Kamera-JPEG am nächsten kommt. 0 = nicht schärfen."""
+    goal = _detail(target512)
+    tone = _tone(base512, p)
+    errs = []
+    for a in SHARPEN_STEPS:
+        q = p.model_copy(deep=True)
+        q.sharpen = Sharpen(amount=a, radius=1.0)
+        errs.append(abs(_detail(_sharpen(tone, q)) - goal))
+    best = SHARPEN_STEPS[int(np.argmin(errs))]
+    return best if errs[0] > 0 and (errs[0] - min(errs)) / errs[0] > 0.1 else 0.0  # nur bei klarem Gewinn
+
+
 def fit_photo(path: Path) -> dict:
     """Gibt {'ok', 'params', 'before', 'after', 'reason'} zurück. before/after = mittlere Abweichung (0..1)."""
     from scipy.optimize import minimize
@@ -70,11 +92,14 @@ def fit_photo(path: Path) -> dict:
     target = _embedded_preview(path)
     if target is None:
         return {"ok": False, "reason": "kein eingebettetes Vorschaubild"}
-    base = _small(_load_base(path, Params(), 512))
+    raw_base = _load_base(path, Params(), 512)
+    base512 = _small(raw_base, 512)
+    base = _small(base512, FIT_SIDE)
     th, tw = target.shape[:2]
     bh, bw = base.shape[:2]
     if abs((tw / th) - (bw / bh)) / (bw / bh) > ASPECT_TOLERANCE:
         return {"ok": False, "reason": "Seitenverhältnis des Vorschaubilds weicht ab"}
+    target_full = target
     target = cv2.resize(target, (bw, bh), interpolation=cv2.INTER_AREA)
 
     def error(vec) -> float:
@@ -91,14 +116,18 @@ def fit_photo(path: Path) -> dict:
     after_params = error([vals[f[0]] for f in FIELDS])
     if after_params >= before:  # Parameter helfen nicht: bei den Standardwerten bleiben
         vals, after_params = {f[0]: f[1] for f in FIELDS}, before
+    # Schärfung: Detailenergie (Laplace) bei 512 px angleichen. Die Kamera-JPEGs sind fast immer nachgeschärft.
+    amount = _fit_sharpen(base512, Params(**vals), cv2.resize(target_full, (base512.shape[1], base512.shape[0]), interpolation=cv2.INTER_AREA))
+    if amount > 0:
+        vals["sharpen"] = {"amount": amount, "radius": 1.0}
     # Stufe 2: Kamera-Look als Script auf dem Ergebnis der Parameter
-    ours = _tone(base, Params(**vals))
+    ours = _tone(base, Params(**{k: v for k, v in vals.items() if k != "sharpen"}))
     look = _fit_look(ours, target)
     after = look["error"]
     script = look_script(look) if after < after_params * 0.95 else None
     if script is None:
         after = after_params
-    if before <= 0 or (before - after) / before < MIN_IMPROVEMENT:
+    if before <= 0 or ((before - after) / before < MIN_IMPROVEMENT and "sharpen" not in vals):
         return {"ok": False, "reason": "keine deutliche Verbesserung", "before": before, "after": after}
     return {"ok": True, "params": vals, "script": script, "before": before, "after_params": after_params, "after": after}
 
@@ -212,7 +241,7 @@ def apply_result(row: dict, result: dict, stamp_before: tuple[int, int]) -> bool
     p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
     if result["ok"]:
         for k, v in result["params"].items():
-            setattr(p, k, v)
+            setattr(p, k, Sharpen(**v) if k == "sharpen" else v)
         p.auto_match = {"params": result["params"], "abweichung_vorher": round(result["before"], 4),
                         "abweichung_nachher": round(result["after"], 4), "script": bool(result.get("script"))}
         if result.get("script"):

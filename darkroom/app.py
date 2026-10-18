@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 import threading
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -171,7 +172,12 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
     row = _photo(pid)
     p = _parse(body.yaml)
     img = _develop_with_script(row, p, body.script, max_side, policy.PREVIEW_TIMEOUT)
-    return Response(to_jpeg(to_uint8(img)), media_type="image/jpeg")
+    headers = {}
+    if p.lens.enabled:
+        from . import lenscorr
+
+        headers["X-Lens-Status"] = quote(lenscorr.status(catalog.LIBRARY / row["path"]))
+    return Response(to_jpeg(to_uint8(img)), media_type="image/jpeg", headers=headers)
 
 
 @app.put("/api/photos/{pid}/params")

@@ -32,6 +32,9 @@ class Denoise(BaseModel):
 
 class LensProfile(BaseModel):
     enabled: bool = False
+    distortion: bool = True  # Verzeichnung
+    vignetting: bool = True  # Vignettierung
+    tca: bool = True  # Farbsäume (chromatische Aberration)
 
 
 class Params(BaseModel):

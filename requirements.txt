@@ -8,6 +8,7 @@ scikit-image>=0.22
 opencv-python-headless>=4.9
 Pillow>=10.0
 rawpy>=0.21
+lensfunpy>=1.15
 exifread>=3.0
 httpx>=0.27
 pytest>=8.0
