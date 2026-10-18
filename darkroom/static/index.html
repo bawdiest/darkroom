@@ -61,7 +61,7 @@
   <span class="spacer"></span>
   <span id="lightTools">
     <button id="scan">Bibliothek scannen</button>
-    <button id="match" title="Unbearbeitete RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen. Klick während des Laufs stoppt den Job.">Angleichen</button>
+    <button id="match" title="Die angezeigten (gefilterten) unbearbeiteten RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen (Parameter und Auto-Script). Klick während des Laufs stoppt den Job.">Angleichen</button>
     <button id="ai" title="KI-Funktionen folgen">KI ▾</button>
     <button id="exportXmp">XMP exportieren</button>
   </span>
@@ -135,7 +135,8 @@ async function loadFacets() {
 }
 function badges(ph) {
   const b = (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
-            (ph.has_script ? '<span class="badge sc" title="Hat ein Script">&lt;/&gt; Script</span>' : '');
+            (ph.has_script ? (ph.auto_script ? '<span class="badge sc" title="Automatischer Kamera-Look (vom Angleich-Job erzeugt)">&lt;/&gt; Auto</span>'
+                                    : '<span class="badge sc" title="Hat ein Script">&lt;/&gt; Script</span>') : '');
   return b ? `<div class="badges">${b}</div>` : '';
 }
 // Aktualisiert Marker und Vorschaubilder der sichtbaren Karten, ohne das Raster neu aufzubauen
@@ -203,8 +204,11 @@ $('#match').onclick = async () => {
   const st = await (await api('/api/jobs/match')).json();
   if (st.running) { await api('/api/jobs/match', {method:'DELETE'}); }
   else {
-    const r = await (await api('/api/jobs/match', {method:'POST'})).json();
-    if (!r.total) { $('#count').textContent = 'Nichts zu tun: alle Fotos sind bearbeitet oder bereits angeglichen.'; return; }
+    const ids = [...document.querySelectorAll('#grid .card')].map(c => c.dataset.id);
+    if (!ids.length) return;
+    if (!confirm(`${ids.length} angezeigte Fotos an das Kamera-Vorschaubild angleichen?\nBearbeitete Fotos und Fotos mit eigenem Script werden übersprungen, bereits angeglichene neu berechnet. Filter oben schränken die Auswahl ein.`)) return;
+    const r = await (await api('/api/jobs/match', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ids})})).json();
+    if (!r.total) { $('#count').textContent = 'Nichts zu tun: die angezeigten Fotos sind bearbeitet, haben ein eigenes Script oder sind keine RAWs.'; return; }
   }
   pollMatch();
 };

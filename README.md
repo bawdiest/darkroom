@@ -44,13 +44,19 @@ Tests: `python -m unittest discover -s tests` (Sandbox, Prüfungen, Ausgabe, KI-
 
 ## Angleichen an das Kamera-Vorschaubild
 
-Der Button **Angleichen** im Leuchttisch startet einen Hintergrundjob. Er nimmt alle unbearbeiteten RAWs ohne Script und
-sucht Tonwert-Parameter (Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz), mit denen das Ergebnis dem eingebetteten
-JPEG der Kamera möglichst ähnlich sieht. Die Werte landen in der YAML. Das Foto gilt weiter als «unbearbeitet»
-(Marker `auto_match`), bis du selbst Werte änderst. Fotos ohne deutliche Verbesserung (weniger als 10 %), ohne
-eingebettetes Vorschaubild oder mit abweichendem Seitenverhältnis werden übersprungen und nicht erneut geprüft.
-Ein Klick während des Laufs stoppt den Job. Bearbeitete Fotos und Fotos mit Script werden nie angefasst.
-Weissabgleich, Farbe und Objektivkorrektur gleicht der Job nicht an.
+Der Button **Angleichen** im Leuchttisch startet einen Hintergrundjob für die **aktuell angezeigten Fotos** (Filter
+einsetzen, um die Auswahl einzuschränken; vorher gibt es eine Rückfrage). Pro unbearbeitetem RAW passiert in zwei Stufen:
+
+1. **Parameter:** Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz werden so gesucht, dass das Bild dem eingebetteten
+   JPEG der Kamera ähnlicher wird (steht in der YAML).
+2. **Kamera-Look als Script:** Eine Farbmatrix (3x3) und Tonkurven pro Kanal bilden Sättigung, S-Kurve und Farbstich nach.
+   Das Script beginnt mit `# auto_match` und ist editierbar; `STRENGTH` (0..1) blendet den Look stufenlos ein oder aus.
+
+Solange nur Werte des Jobs vorhanden sind, gilt das Foto als «unbearbeitet» (Marker `auto_match`, Badge «Auto»).
+Bearbeitete Fotos und Fotos mit eigenem Script fasst der Job nie an; löschst du die Zeile `# auto_match`, gehört das
+Script dir. Ohne deutliche Verbesserung (weniger als 10 %), ohne eingebettetes Vorschaubild oder mit abweichendem
+Seitenverhältnis wird übersprungen. Ein Klick während des Laufs stoppt den Job.
+Grenzen: nur globale Anpassungen. Lokaler Kontrast, Objektivkorrektur und Rauschreduzierung der Kamera werden nicht nachgebildet.
 
 ## Script-Vertrag
 

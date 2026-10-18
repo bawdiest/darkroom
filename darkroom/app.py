@@ -77,7 +77,7 @@ def _refresh_thumb(pid: str) -> None:
             p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
             script = sf.read_text(encoding="utf-8") if sf.exists() else ""
             path = catalog.LIBRARY / row["path"]
-            if not catalog.is_edited(p) and not script.strip():
+            if not catalog.is_edited(p) and (not script.strip() or script.lstrip().startswith("# auto_match")):
                 catalog.make_thumb(path, pid, p, original=True)
                 return
             img, scale = develop(path, p, catalog.THUMB_SIZE)
@@ -109,10 +109,14 @@ def photos(bg: BackgroundTasks, q: str | None = None, camera: str | None = None,
     return out
 
 
+class MatchBody(BaseModel):
+    ids: list[str] | None = None
+
+
 @app.post("/api/jobs/match")
-def match_start():
-    """Startet den Hintergrundjob, der unbearbeitete RAWs an das eingebettete Kamera-Vorschaubild angleicht."""
-    return {"gestartet": automatch.JOB.start(), **automatch.JOB.state}
+def match_start(body: MatchBody):
+    """Startet den Hintergrundjob für die übergebenen Fotos (aktuelle Auswahl); ohne ids für alle noch nicht geprüften."""
+    return {"gestartet": automatch.JOB.start(body.ids), **automatch.JOB.state}
 
 
 @app.get("/api/jobs/match")

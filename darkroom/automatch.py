@@ -1,9 +1,11 @@
 """Hintergrundjob: gleicht unbearbeitete RAWs an das eingebettete Kamera-Vorschaubild an.
 
-Die Pipeline rendert ein RAW ohne Kamera-Look (flach). Der Job sucht für jedes unbearbeitete Foto die Tonwert-Parameter
-(Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz), die das Ergebnis dem eingebetteten JPEG der Kamera möglichst
-ähnlich machen, und schreibt sie in die YAML. Das Ergebnis ist ein Startpunkt; das Foto gilt weiter als «unbearbeitet»
-(Marker `auto_match`), bis du selbst etwas änderst.
+Die Pipeline rendert ein RAW ohne Kamera-Look (flach). Der Job gleicht das Ergebnis in zwei Stufen an das eingebettete
+JPEG der Kamera an:
+  1. Tonwert-Parameter (Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz) -> in die YAML.
+  2. Farbmatrix (3x3) und Tonkurven pro Kanal (Kamera-Look: Sättigung, S-Kurve, Farbstich) -> als Script.
+Das Script beginnt mit `# auto_match` und ist von Hand editierbar (Regler STRENGTH). Solange nur Werte des Jobs
+vorhanden sind, gilt das Foto weiter als «unbearbeitet».
 """
 from __future__ import annotations
 
@@ -86,42 +88,142 @@ def fit_photo(path: Path) -> dict:
     res = minimize(loss, x0, method="Powell", bounds=[(f[2], f[3]) for f in FIELDS],
                    options={"xtol": 1e-2, "ftol": 1e-4, "maxfev": 600})
     vals = {"exposure": round(float(res.x[0]), 2)} | {f[0]: int(round(v)) for f, v in zip(FIELDS[1:], res.x[1:])}
-    after = error([vals[f[0]] for f in FIELDS])
+    after_params = error([vals[f[0]] for f in FIELDS])
+    if after_params >= before:  # Parameter helfen nicht: bei den Standardwerten bleiben
+        vals, after_params = {f[0]: f[1] for f in FIELDS}, before
+    # Stufe 2: Kamera-Look als Script auf dem Ergebnis der Parameter
+    ours = _tone(base, Params(**vals))
+    look = _fit_look(ours, target)
+    after = look["error"]
+    script = look_script(look) if after < after_params * 0.95 else None
+    if script is None:
+        after = after_params
     if before <= 0 or (before - after) / before < MIN_IMPROVEMENT:
         return {"ok": False, "reason": "keine deutliche Verbesserung", "before": before, "after": after}
-    return {"ok": True, "params": vals, "before": before, "after": after}
+    return {"ok": True, "params": vals, "script": script, "before": before, "after_params": after_params, "after": after}
 
 
-def candidates() -> list[dict]:
-    """Unbearbeitete RAWs ohne Script, die noch nicht angeglichen (oder geprüft) wurden."""
+AUTO_HEADER = "# auto_match"
+KNOTS = np.linspace(0.0, 1.0, 17)
+SCRIPT_TEMPLATE = """# auto_match: Kamera-Look, automatisch aus dem eingebetteten Vorschaubild berechnet (nicht entfernen, solange das Script automatisch bleiben soll)
+STRENGTH = {strength}  # 0 = aus, 1 = voll angeglichen
+MATRIX = {matrix}  # Farbmatrix (Zeilen: R, G, B)
+CURVE_X = {x}  # Stützstellen der Tonkurven
+CURVE_R = {r}
+CURVE_G = {g}
+CURVE_B = {b}
+
+
+def process(img, p):
+    m = np.array(MATRIX, np.float32)
+    x = np.clip(img @ m.T, 0.0, 1.0)
+    out = np.empty_like(x)
+    for c, ys in enumerate((CURVE_R, CURVE_G, CURVE_B)):
+        out[..., c] = np.interp(x[..., c], CURVE_X, ys)
+    return (img + STRENGTH * (out - img)).astype(np.float32)
+"""
+
+
+def is_auto_script(text: str) -> bool:
+    return text.lstrip().startswith(AUTO_HEADER)
+
+
+def _fit_look(ours: np.ndarray, target: np.ndarray) -> dict:
+    """Farbmatrix + Kurven pro Kanal, die `ours` an `target` angleichen. Gibt {'matrix', 'curves', 'error'} zurück."""
+    a = ours.reshape(-1, 3).astype(np.float64)
+    t = target.reshape(-1, 3).astype(np.float64)
+    idx = np.random.default_rng(0).choice(len(a), size=min(len(a), 30000), replace=False)
+    a, t = a[idx], t[idx]
+
+    def curves_for(u: np.ndarray) -> np.ndarray:
+        """Pro Kanal monotone Kurve an den Stützstellen: Median des Ziels in der Umgebung jeder Stützstelle."""
+        ys = np.zeros((3, len(KNOTS)))
+        half = 0.5 * (KNOTS[1] - KNOTS[0]) * 1.5
+        for c in range(3):
+            col = u[:, c]
+            for i, k in enumerate(KNOTS):
+                sel = np.abs(col - k) <= half
+                ys[c, i] = np.median(t[sel, c]) if sel.sum() >= 20 else np.nan
+            ok = ~np.isnan(ys[c])
+            ys[c] = np.interp(KNOTS, KNOTS[ok], ys[c, ok]) if ok.any() else KNOTS
+            ys[c] = np.maximum.accumulate(np.clip(ys[c], 0, 1))
+        return ys
+
+    def apply(u: np.ndarray, ys: np.ndarray) -> np.ndarray:
+        return np.stack([np.interp(np.clip(u[:, c], 0, 1), KNOTS, ys[c]) for c in range(3)], -1)
+
+    best = None
+    for use_matrix in (False, True):
+        if use_matrix:  # kleinste Quadrate, leicht zur Einheitsmatrix hin regularisiert
+            lam = 1e-3 * len(a)
+            m = np.linalg.solve(a.T @ a + lam * np.eye(3), a.T @ t + lam * np.eye(3)).T
+        else:
+            m = np.eye(3)
+        u = np.clip(a @ m.T, 0, 1)
+        ys = curves_for(u)
+        err = float(np.abs(apply(u, ys) - t).mean())
+        if best is None or err < best["error"]:
+            best = {"matrix": m, "curves": ys, "error": err}
+    return best
+
+
+def look_script(look: dict) -> str:
+    fmt = lambda arr, nd=4: "[" + ", ".join(f"{float(v):.{nd}f}" for v in arr) + "]"
+    return SCRIPT_TEMPLATE.format(
+        strength="1.0", matrix="[" + ", ".join(fmt(row) for row in look["matrix"]) + "]", x=fmt(KNOTS, 4),
+        r=fmt(look["curves"][0]), g=fmt(look["curves"][1]), b=fmt(look["curves"][2]))
+
+
+def candidates(ids: list[str] | None = None) -> list[dict]:
+    """Unbearbeitete RAWs, die der Job anfassen darf. Mit `ids` nur diese Fotos (aktuelle Auswahl in der Übersicht, auch
+    erneut); ohne `ids` nur Fotos, die noch nicht angeglichen oder geprüft wurden.
+    Nie: Fotos mit eigenen Änderungen oder mit einem selbst geschriebenen Script."""
+    wanted = set(ids) if ids is not None else None
     out = []
     for row in catalog.db().execute("SELECT id, path FROM photos ORDER BY path"):
+        if wanted is not None and row["id"] not in wanted:
+            continue
         if Path(row["path"]).suffix.lower() not in RAW_EXT:
             continue
         st = catalog.edit_state(row["path"])
-        if st["edited"] or st["has_script"]:
+        if st["edited"] or (st["has_script"] and not st["auto_script"]):
             continue
         pf = catalog.params_file(row["path"])
-        if pf.exists() and "auto_match" in pf.read_text(encoding="utf-8"):
+        if wanted is None and pf.exists() and "auto_match" in pf.read_text(encoding="utf-8"):
             continue
         out.append(dict(row))
     return out
 
 
-def apply_result(row: dict, result: dict, mtime_before: int) -> bool:
-    """Schreibt das Ergebnis in die YAML. False, wenn das Foto inzwischen geändert wurde."""
-    pf = catalog.params_file(row["path"])
-    now = pf.stat().st_mtime_ns if pf.exists() else 0
-    if now != mtime_before or catalog.script_file(row["path"]).exists():
+def _stamp(rel: str) -> tuple[int, int]:
+    pf, sf = catalog.params_file(rel), catalog.script_file(rel)
+    return (pf.stat().st_mtime_ns if pf.exists() else 0, sf.stat().st_mtime_ns if sf.exists() else 0)
+
+
+def apply_result(row: dict, result: dict, stamp_before: tuple[int, int]) -> bool:
+    """Schreibt das Ergebnis (YAML und ggf. Script). False, wenn das Foto inzwischen geändert wurde."""
+    rel = row["path"]
+    pf, sf = catalog.params_file(rel), catalog.script_file(rel)
+    if _stamp(rel) != stamp_before:
+        return False
+    old_script = sf.read_text(encoding="utf-8") if sf.exists() else ""
+    if old_script.strip() and not is_auto_script(old_script):
         return False
     p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
     if result["ok"]:
         for k, v in result["params"].items():
             setattr(p, k, v)
         p.auto_match = {"params": result["params"], "abweichung_vorher": round(result["before"], 4),
-                        "abweichung_nachher": round(result["after"], 4)}
+                        "abweichung_nachher": round(result["after"], 4), "script": bool(result.get("script"))}
+        if result.get("script"):
+            sf.parent.mkdir(parents=True, exist_ok=True)
+            sf.write_text(result["script"], encoding="utf-8")
+        elif sf.exists():
+            sf.unlink()
     else:
-        p.auto_match = {"params": {}, "grund": result.get("reason", "")}
+        p.auto_match = {"params": (p.auto_match or {}).get("params", {}), "grund": result.get("reason", "")}
+        if sf.exists():  # alter Auto-Script bleibt bei erfolgloser Wiederholung bestehen
+            pass
     pf.parent.mkdir(parents=True, exist_ok=True)
     pf.write_text(dump_params(p), encoding="utf-8")
     return True
@@ -135,11 +237,11 @@ class MatchJob:
         self.state = {"running": False, "total": 0, "done": 0, "angeglichen": 0, "uebersprungen": 0, "fehler": 0,
                       "aktuell": "", "gestartet": None, "beendet": None, "letzte_fehler": []}
 
-    def start(self) -> bool:
+    def start(self, ids: list[str] | None = None) -> bool:
         with self.lock:
             if self.thread and self.thread.is_alive():
                 return False
-            todo = candidates()
+            todo = candidates(ids)
             self.stop_flag.clear()
             self.state.update(running=True, total=len(todo), done=0, angeglichen=0, uebersprungen=0, fehler=0, aktuell="",
                               gestartet=time.time(), beendet=None, letzte_fehler=[])
@@ -157,10 +259,9 @@ class MatchJob:
                     break
                 self.state["aktuell"] = row["path"]
                 try:
-                    pf = catalog.params_file(row["path"])
-                    mt = pf.stat().st_mtime_ns if pf.exists() else 0
+                    stamp = _stamp(row["path"])
                     res = fit_photo(catalog.LIBRARY / row["path"])
-                    if not apply_result(row, res, mt):
+                    if not apply_result(row, res, stamp):
                         pass  # inzwischen vom Benutzer geändert: nichts überschreiben
                     elif res["ok"]:
                         self.state["angeglichen"] += 1

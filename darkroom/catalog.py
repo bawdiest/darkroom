@@ -161,8 +161,10 @@ def edit_state(rel: str) -> dict:
     """{'edited', 'has_script', 'thumb_v'} für ein Foto. Gecacht nach Änderungszeit der Dateien."""
     pf, sf = params_file(rel), script_file(rel)
     pm = pf.stat().st_mtime_ns if pf.exists() else 0
-    has_script = sf.exists() and bool(sf.read_text(encoding="utf-8").strip())
-    key = (pm, has_script)
+    text = sf.read_text(encoding="utf-8") if sf.exists() else ""
+    has_script = bool(text.strip())
+    auto_script = has_script and text.lstrip().startswith("# auto_match")  # vom Angleich-Job erzeugt
+    key = (pm, has_script, auto_script)
     hit = _STATE_CACHE.get(rel)
     if hit and hit[0] == key:
         edited = hit[1]
@@ -172,7 +174,7 @@ def edit_state(rel: str) -> dict:
         except Exception:
             edited = False
         _STATE_CACHE[rel] = (key, edited)
-    return {"edited": bool(edited), "has_script": has_script}
+    return {"edited": bool(edited), "has_script": has_script, "auto_script": auto_script}
 
 
 def thumb_stale(rel: str, pid: str) -> bool:
@@ -203,12 +205,13 @@ def list_photos(q=None, camera=None, lens=None, min_rating=0, tag=None, state=No
     out = []
     for r in db().execute(sql, args):
         d = dict(r) | {"tags": json.loads(r["tags"])} | edit_state(r["path"]) | {"thumb_v": thumb_version(r["id"])}
-        d["thumb_stale"] = (d["edited"] or d["has_script"]) and thumb_stale(r["path"], r["id"])
-        if state == "edited" and not (d["edited"] or d["has_script"]):
+        d["thumb_stale"] = (d["edited"] or (d["has_script"] and not d["auto_script"])) and thumb_stale(r["path"], r["id"])
+        manual_script = d["has_script"] and not d["auto_script"]  # Auto-Script zählt nicht als Bearbeitung
+        if state == "edited" and not (d["edited"] or manual_script):
             continue
         if state == "script" and not d["has_script"]:
             continue
-        if state == "unedited" and (d["edited"] or d["has_script"]):
+        if state == "unedited" and (d["edited"] or manual_script):
             continue
         out.append(d)
         if len(out) >= limit:
