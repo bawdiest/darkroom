@@ -45,6 +45,8 @@
   #dark { flex:1; display:none; min-width:0; }
   #preview { flex:1; display:flex; align-items:center; justify-content:center; background:#111; min-width:0; position:relative; }
   #preview img { max-width:100%; max-height:100%; }
+  #status.busy, #status.bad { left:50%; top:50%; bottom:auto; transform:translate(-50%,-50%); font-size:15px; background:rgba(0,0,0,.7); padding:10px 16px; border-radius:8px; color:var(--fg); max-width:80%; white-space:pre-wrap; z-index:3; }
+  #status.bad { color:#ff7b72; }
   #status { position:absolute; left:10px; bottom:10px; color:var(--mute); font-size:12px; }
   #resizer { width:6px; cursor:col-resize; background:var(--line); flex:none; } #resizer:hover, #resizer.drag { background:var(--acc); }
   #side { width:400px; min-width:300px; max-width:85vw; flex:none; display:flex; flex-direction:column; border-left:1px solid var(--line); background:var(--panel); }
@@ -110,13 +112,50 @@
   .vers button.d { border-style:dashed; border-color:#4d7fbf; } .vers button.on.d { border-color:var(--acc); }
   .actions { display:flex; flex-wrap:wrap; gap:8px; } .actions kbd { color:var(--mute); font-size:11px; margin-left:4px; }
   #dtitle { position:absolute; left:10px; top:10px; z-index:2; font-size:12px; color:var(--mute); }
+  /* ---------- Mobile: nur Leuchttisch und Galerie ---------- */
+  #menuBtn, #infoBtn, #backdrop { display:none; }
+  button, select { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  body.mobile { height:100vh; height:100dvh; }
+  body.mobile header { flex-wrap:wrap; gap:8px; padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top)); }
+  body.mobile header h1, body.mobile #tabDark, body.mobile #lightTools, body.mobile #help, body.mobile #sizeBox { display:none !important; }
+  body.mobile #menuBtn { display:inline-block; font-size:18px; padding:4px 12px; }
+  body.mobile header button { padding:8px 14px; }
+  body.mobile #searchWrap { order:5; flex:1 1 100%; min-width:0; max-width:none; }
+  body.mobile #fq { font-size:16px; }  /* 16 px verhindert das automatische Hineinzoomen auf iOS */
+  body.mobile #filters { position:fixed; top:0; bottom:0; left:0; width:min(86vw, 340px); z-index:50; transform:translateX(-102%); transition:transform .2s; background:var(--panel); box-shadow:4px 0 24px rgba(0,0,0,.5); padding-top:calc(12px + env(safe-area-inset-top)); }
+  body.mobile.drawer #filters { transform:none; }
+  body.mobile.drawer #backdrop { display:block; position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.55); }
+  body.mobile .nav { padding:10px 10px; }
+  body.mobile #rolls, body.mobile #cats { max-height:none; }
+  body.mobile #grid { --cell:150px; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px; padding:8px; }
+  body.mobile .card .ph { height:auto; aspect-ratio:4/3; }
+  body.mobile .card .chk { display:flex; width:28px; height:28px; right:4px; top:4px; background:rgba(20,20,22,.55); border-color:rgba(255,255,255,.5); }
+  body.mobile .badge { font-size:10px; padding:2px 5px; }
+  body.mobile .card .meta { font-size:11px; padding:4px 6px; }
+  body.mobile #selbar { padding:8px 8px 0; } body.mobile #selbar button, body.mobile #selbar select { padding:8px 10px; font-size:13px; }
+  body.mobile #chips { padding:8px 8px 0; flex-wrap:nowrap; overflow-x:auto; } body.mobile .chip { flex:none; padding:6px 12px; }
+  body.mobile #loupe { flex-direction:column; }
+  body.mobile #lstrip, body.mobile .arrow, body.mobile #iDev, body.mobile #lback span.long { display:none; }
+  body.mobile #ltop { padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top)); gap:8px; } body.mobile #ltop button { padding:8px 12px; }
+  body.mobile #ltop button, body.mobile #lpos { white-space:nowrap; flex:none; } body.mobile #ltop { gap:6px; }
+  body.mobile #ltitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  body.mobile #infoBtn { display:inline-block; }
+  body.mobile #lstage { touch-action:none; overflow:hidden; }
+  body.mobile #limg { transform-origin:center; will-change:transform; }
+  body.mobile #linfo { position:fixed; left:0; right:0; bottom:0; width:auto; max-height:70vh; max-height:70dvh; border-left:0; border-top:1px solid var(--line); border-radius:14px 14px 0 0; z-index:30; transform:translateY(105%); transition:transform .22s; padding-bottom:calc(18px + env(safe-area-inset-bottom)); box-shadow:0 -8px 28px rgba(0,0,0,.55); }
+  body.mobile #linfo.open { transform:none; }
+  body.mobile #linfo .tg b { padding:4px 6px; }
+  body.mobile .stars span { font-size:32px; padding:0 2px; }
+  body.mobile #linfo select, body.mobile #linfo input.small { font-size:16px; padding:8px 10px; }
+  body.mobile #lstat { bottom:calc(10px + env(safe-area-inset-bottom)); }
 </style>
 </head>
 <body>
 <header>
+  <button id="menuBtn" title="Filmrollen, Kataloge und Filter">☰</button>
   <h1>DARKROOM</h1>
   <button id="tabLight" class="on">Leuchttisch</button>
-  <button id="tabLoupe" disabled>Lupe</button>
+  <button id="tabLoupe" disabled>Galerie</button>
   <button id="tabDark" disabled>Dunkelkammer</button>
   <span id="searchWrap">
     <span class="ico">⌕</span>
@@ -140,6 +179,7 @@
     <button id="exportXmp">XMP exportieren</button>
   </span>
 </header>
+<div id="backdrop"></div>
 <main>
   <section id="lighttable" style="display:flex; flex:1; min-width:0;">
     <aside id="filters">
@@ -165,7 +205,7 @@
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
       <div><label>Bearbeitung</label><select id="fstate"><option value="">alle</option><option value="edited">bearbeitet</option><option value="script">mit Script</option><option value="unedited">unbearbeitet</option></select></div>
       <div><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
-      <div><label>Grösse der Vorschau <span id="sizeVal" style="float:right"></span></label>
+      <div id="sizeBox"><label>Grösse der Vorschau <span id="sizeVal" style="float:right"></span></label>
         <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
       <div id="count" style="color:var(--mute)"></div>
     </aside>
@@ -185,7 +225,8 @@
       <div id="ltop">
         <button id="lback" title="Esc">← Raster</button>
         <span id="ltitle"></span><span class="spacer"></span><span id="lpos"></span>
-        <button id="lorig" title="O: zwischen bearbeiteter Ansicht und Kamera-Vorschaubild wechseln">Original anzeigen</button>
+        <button id="infoBtn" title="Angaben ein-/ausblenden">ⓘ</button>
+        <button id="lorig" title="O: zwischen bearbeiteter Ansicht und Kamera-Vorschaubild wechseln">Original</button>
       </div>
       <div id="lstage">
         <button class="arrow" id="lprev" title="←">‹</button>
@@ -235,6 +276,16 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
+// Mobile Ansicht: nur Leuchttisch und Galerie (automatisch bei schmalem Bildschirm; ?mobile=1 / ?mobile=0 erzwingt)
+const mq = matchMedia('(max-width: 820px)'), forced = new URLSearchParams(location.search).get('mobile');
+const isMobile = () => forced === '1' || (forced !== '0' && mq.matches);
+function applyMode() {
+  const m = isMobile(); document.body.classList.toggle('mobile', m);
+  if (!m) { document.body.classList.remove('drawer'); $('#linfo').classList.remove('open'); }
+  else if ($('#dark').style.display === 'block') show('light');
+}
+mq.addEventListener('change', applyMode);
+const closeDrawer = () => document.body.classList.remove('drawer');
 let current = null, timer = null, seq = 0;
 
 async function api(url, opt) {
@@ -307,6 +358,7 @@ function drawLibrary() {
 }
 $('#lib').addEventListener('click', e => {
   const n = e.target.closest('.nav'); if (!n) return;
+  if (isMobile()) closeDrawer();
   if (n.id === 'navAll') return setView('all');
   if (n.dataset.type === 'date' && n.dataset.d < 2) {  // Jahr/Monat: auf- oder zuklappen
     const k = n.dataset.name; view.type === 'date' && view.name === k && openRolls.has(k) ? openRolls.delete(k) : openRolls.add(k);
@@ -438,7 +490,7 @@ async function loadGrid() {
 function updateSel() {
   document.querySelectorAll('#grid .card').forEach(c => c.classList.toggle('sel', sel.has(c.dataset.id)));
   const vis = list.filter(p => sel.has(p.id)).length;
-  $('#selInfo').textContent = sel.size ? `${sel.size} ausgewählt` + (vis !== sel.size ? ` (${vis} hier sichtbar)` : '') : 'Klick = Lupe · Strg/Umschalt-Klick oder ✓ = auswählen';
+  $('#selInfo').textContent = sel.size ? `${sel.size} ausgewählt` + (vis !== sel.size ? ` (${vis} hier sichtbar)` : '') : 'Klick = Galerie · Strg/Umschalt-Klick oder ✓ = auswählen';
   $('#selActions').style.display = sel.size ? 'flex' : 'none';
   $('#selRemove').style.display = view.type === 'catalog' ? '' : 'none';
   $('#selDel').style.display = list.some(p => sel.has(p.id) && p.is_duplicate) ? '' : 'none';
@@ -577,9 +629,9 @@ $('#exportXmp').onclick = async () => {
 };
 
 
-// ---------- Lupe (Galerie-Ansicht) ----------
+// ---------- Galerie (Galerie-Ansicht) ----------
 let lidx = -1, lseq = 0, showOrig = false, linfo = null, stripFor = null;
-const viewUrl = ph => `/api/photos/${ph.id}/view?max_side=2400${showOrig ? '&original=1' : ''}`;
+const viewUrl = (ph, extra = '') => `/api/photos/${ph.id}/view?${showOrig ? 'original=1&' : ''}${extra}`;
 function fmtShutter(s) { return s ? s + ' s' : null; }
 function row(k, v) { return v == null || v === '' ? '' : `<dt>${k}</dt><dd>${H(v)}</dd>`; }
 function buildStrip() {
@@ -596,14 +648,18 @@ async function openLoupe(id) {
   $('#tabLoupe').disabled = false; $('#tabDark').disabled = false; show('loupe');
   $('#ltitle').innerHTML = H(baseName(ph)) + (ph.is_duplicate ? ` <span class="badge dup">⧉ Duplikat ${ph.version}</span>` : '');
   $('#lpos').textContent = `${i + 1} / ${list.length}`;
-  $('#lorig').classList.toggle('on', showOrig); $('#lorig').textContent = showOrig ? 'Bearbeitet anzeigen' : 'Original anzeigen';
+  $('#lorig').classList.toggle('on', showOrig); $('#lorig').textContent = showOrig ? 'Bearbeitet' : 'Original';
+  resetZ();
   const img = $('#limg'); img.src = `/api/thumb/${ph.id}?v=${ph.thumb_v}`; img.classList.add('lowres');
   $('#lstat').textContent = 'lädt …';
   const big = new Image();
   big.onload = () => { if (my === lseq) { img.src = big.src; img.classList.remove('lowres'); $('#lstat').textContent = showOrig ? 'Original (Kamera-Vorschaubild)' : ''; } };
   big.onerror = () => { if (my === lseq) $('#lstat').textContent = 'Ansicht konnte nicht erzeugt werden'; };
   big.src = viewUrl(ph);
-  for (const d of [1, -1]) if (list[i + d]) new Image().src = viewUrl(list[i + d]);  // Nachbarn vorladen
+  const probe = new Image();  // schon erzeugte grosse Ansicht sofort statt der kleinen Vorschau zeigen
+  probe.onload = () => { if (my === lseq && img.classList.contains('lowres')) img.src = probe.src; };
+  probe.src = viewUrl(ph, 'cached=1');
+  for (const d of [1, -1]) if (list[i + d]) new Image().src = viewUrl(list[i + d], 'prefetch=1');  // Nachbarn vorladen (nur Billiges)
   buildStrip();
   document.querySelectorAll('#lstrip img').forEach(x => x.classList.toggle('on', x.dataset.id === id));
   const cur = $(`#lstrip img[data-id="${id}"]`); if (cur) cur.scrollIntoView({inline:'center', block:'nearest'});
@@ -707,6 +763,47 @@ document.addEventListener('keydown', e => {
   else if (k === 'Delete') deleteCurrentDuplicate().catch(err => $('#lstat').textContent = err.message);
 });
 
+// ---------- Mobile: Menü, Info-Blatt, Wischen und Zoomen in der Galerie ----------
+$('#menuBtn').onclick = () => document.body.classList.toggle('drawer');
+$('#backdrop').onclick = closeDrawer;
+$('#infoBtn').onclick = () => $('#linfo').classList.toggle('open');
+const Z = {s:1, x:0, y:0};
+function applyZ() { $('#limg').style.transform = Z.s === 1 ? '' : `translate(${Z.x}px, ${Z.y}px) scale(${Z.s})`; }
+function resetZ() { Z.s = 1; Z.x = Z.y = 0; applyZ(); }
+(() => {
+  const st = $('#lstage'); let t0 = null, last = 0, pinch = null, moved = false;
+  const dist = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const clamp = () => { const r = st.getBoundingClientRect(), mx = r.width * (Z.s - 1) / 2, my = r.height * (Z.s - 1) / 2;
+    Z.x = Math.max(-mx, Math.min(mx, Z.x)); Z.y = Math.max(-my, Math.min(my, Z.y)); };
+  st.addEventListener('touchstart', e => {
+    if (!isMobile()) return;
+    moved = false;
+    if (e.touches.length === 2) { pinch = {d:dist(e.touches), s:Z.s}; t0 = null; }
+    else if (e.touches.length === 1) t0 = {x:e.touches[0].clientX, y:e.touches[0].clientY, zx:Z.x, zy:Z.y};
+  }, {passive:true});
+  st.addEventListener('touchmove', e => {
+    if (!isMobile()) return;
+    if (pinch && e.touches.length === 2) { Z.s = Math.max(1, Math.min(6, pinch.s * dist(e.touches) / pinch.d)); if (Z.s === 1) Z.x = Z.y = 0; clamp(); applyZ(); moved = true; }
+    else if (t0 && e.touches.length === 1 && Z.s > 1) { Z.x = t0.zx + e.touches[0].clientX - t0.x; Z.y = t0.zy + e.touches[0].clientY - t0.y; clamp(); applyZ(); moved = true; }
+    else if (t0 && Math.abs(e.touches[0].clientX - t0.x) > 8) moved = true;
+    e.preventDefault();
+  }, {passive:false});
+  st.addEventListener('touchend', e => {
+    if (!isMobile()) return;
+    if (pinch) { if (e.touches.length < 2) pinch = null; return; }
+    if (!t0) return;
+    const c = e.changedTouches[0], dx = c.clientX - t0.x, dy = c.clientY - t0.y, was = t0; t0 = null;
+    if (Z.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) { step(dx < 0 ? 1 : -1); return; }  // Wischen = nächstes/vorheriges Foto
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {  // Tippen
+      const now = Date.now();
+      if (now - last < 320) {  // Doppeltippen: hinein-/herauszoomen
+        last = 0;
+        if (Z.s > 1) resetZ(); else { const r = st.getBoundingClientRect(); Z.s = 2.5; Z.x = (r.left + r.width / 2 - c.clientX) * 1.5; Z.y = (r.top + r.height / 2 - c.clientY) * 1.5; clamp(); applyZ(); }
+      } else { last = now; if ($('#linfo').classList.contains('open')) $('#linfo').classList.remove('open'); }
+    }
+  }, {passive:true});
+})();
+
 // ---------- Dunkelkammer ----------
 function show(view) {
   $('#lighttable').style.display = view === 'light' ? 'flex' : 'none';
@@ -725,8 +822,10 @@ $('#tabDark').onclick = () => { if (!current) return; current.id === darkId ? sh
 $('#tabLoupe').onclick = () => { if (!current) return; if (dirty) { dirty = false; pollThumbs(); } openLoupe(current.id); };
 
 async function openDark(ph) {
+  if (isMobile()) return;  // die Entwicklung gibt es nur am Desktop
   current = ph; darkId = ph.id; $('#tabDark').disabled = false; $('#tabLoupe').disabled = false; show('dark');
   $('#dtitle').innerHTML = H(label(ph));
+  $('#pimg').src = `/api/photos/${ph.id}/view?cached=1`; $('#pimg').onerror = () => { $('#pimg').onerror = null; if (!$('#pimg').src.startsWith('blob:')) $('#pimg').src = `/api/thumb/${ph.id}?v=${ph.thumb_v}`; };  // sofort etwas zeigen, bis die Vorschau fertig ist
   $('#err').textContent = '';
   $('#editor').value = (await (await api(`/api/photos/${ph.id}/params`)).json()).yaml;
   $('#scriptEditor').value = (await (await api(`/api/photos/${ph.id}/script`)).json()).script;
@@ -738,14 +837,14 @@ async function openDark(ph) {
   renderPreview();
 }
 async function renderPreview() {
-  const my = ++seq; $('#status').textContent = 'rendert…';
+  const my = ++seq, t0 = performance.now(); $('#status').className = 'busy'; $('#status').textContent = 'rendert …';
   try {
     const r = await api(`/api/photos/${current.id}/preview`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({yaml:$('#editor').value, script:$('#scriptEditor').value})});
     if (my !== seq) return;
     const url = URL.createObjectURL(await r.blob());
     $('#pimg').onload = () => URL.revokeObjectURL(url);
-    $('#pimg').src = url; $('#err').textContent = ''; const ls = r.headers.get('X-Lens-Status'); $('#status').textContent = ls ? decodeURIComponent(ls) : '';
-  } catch (e) { if (my === seq) { $('#err').textContent = e.message; $('#status').textContent = ''; } }
+    $('#pimg').src = url; $('#err').textContent = ''; const ls = r.headers.get('X-Lens-Status'); $('#status').className = ''; $('#status').textContent = (ls ? decodeURIComponent(ls) + ' · ' : '') + `gerendert in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+  } catch (e) { if (my === seq) { $('#err').textContent = e.message; $('#status').className = 'bad'; $('#status').textContent = 'Vorschau fehlgeschlagen:\n' + e.message; } }
 }
 async function save() {
   const j = body => ({method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
@@ -896,6 +995,7 @@ setSize(savedSize, false);
 $('#size').addEventListener('input', e => setSize(+e.target.value));
 $('#grid').addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); setSize(+$('#size').value + (e.deltaY < 0 ? 20 : -20)); } }, {passive:false});
 
+applyMode();
 loadFacets().then(() => loadGrid());
 </script>
 </body>

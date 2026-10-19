@@ -26,7 +26,7 @@ AI_TAGS_DIR = DATA / "ai_tags"  # ein JSON pro Foto mit den KI-Tags (gehört ins
 ROLLS_FILE = DATA / "rolls.yaml"  # Filmrollen (Name -> Fotos; jedes Foto in höchstens einer), gehört ins Git-Repo
 CATALOGS_FILE = DATA / "catalogs.yaml"  # manuelle Kataloge (Name -> Fotos), gehört ins Git-Repo
 THUMBS = DATA / "cache" / "thumbs"
-VIEWS = DATA / "cache" / "views"  # grosse Ansichten der Lupe
+VIEWS = DATA / "cache" / "views"  # grosse Ansichten der Galerie
 DB_PATH = DATA / "cache" / "index.db"
 
 THUMB_SIZE = 640  # lange Seite der Vorschaubilder in Pixeln
@@ -705,7 +705,7 @@ _EXIF_CACHE: dict = {}
 
 
 def read_exif_full(path: Path) -> dict:
-    """EXIF für die Lupe: zusätzlich Blende, Belichtungszeit und Auflösung. Gecacht."""
+    """EXIF für die Galerie: zusätzlich Blende, Belichtungszeit und Auflösung. Gecacht."""
     key = (str(path), path.stat().st_mtime_ns if path.exists() else 0)
     if key in _EXIF_CACHE:
         return _EXIF_CACHE[key]

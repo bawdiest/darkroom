@@ -200,44 +200,87 @@ def thumb(pid: str):
     return FileResponse(f, headers={"Cache-Control": "max-age=3600"})
 
 
-# ---------- Lupe, Duplikate, Kataloge ----------
+# ---------- Galerie, Duplikate, Kataloge ----------
 @app.get("/api/photos/{pid}/info")
 def photo_info(pid: str):
     _photo(pid)
     return catalog.photo_info(pid)
 
 
-@app.get("/api/photos/{pid}/view")
-def photo_view(pid: str, max_side: int = Query(2400, ge=400, le=6000), original: bool = False):
-    """Grosse Ansicht für die Lupe: bearbeitet (Parameter + Script) oder mit original=1 das Kamera-Vorschaubild.
-    Wird zwischengespeichert und erneuert, sobald Parameter oder Script neuer sind."""
-    row = _photo(pid)
-    rel = row["path"]
-    cache = catalog.VIEWS / f"{pid}-{max_side}{'-o' if original else ''}.jpg"
+VIEW_SIDE = 3200  # lange Seite der grossen Ansicht
+_view_sem = threading.Semaphore(1)  # schwere Ansichten nacheinander, damit die Dunkelkammer-Vorschau nicht warten muss
+
+
+def _view_cache(pid: str, original: bool = False) -> Path:
+    return catalog.VIEWS / f"{pid}-{VIEW_SIDE}{'-o' if original else ''}.jpg"
+
+
+def _view_fresh(row, original: bool = False) -> bool:
+    cache, rel = _view_cache(row["id"], original), row["path"]
+    if not cache.exists():
+        return False
     newest = max((x.stat().st_mtime_ns for x in (catalog.params_file(rel), catalog.script_file(rel)) if x.exists()), default=0)
-    hdr = {"Cache-Control": "no-cache"}
-    if cache.exists() and (original or cache.stat().st_mtime_ns >= newest):
-        return FileResponse(cache, headers=hdr)
-    pf, sf = catalog.params_file(rel), catalog.script_file(rel)
+    return original or cache.stat().st_mtime_ns >= newest
+
+
+def _view_state(row):
+    pf, sf = catalog.params_file(row["path"]), catalog.script_file(row["path"])
     p = load_params(pf.read_text(encoding="utf-8"), catalog.PRESETS_DIR) if pf.exists() else Params()
-    script = sf.read_text(encoding="utf-8") if sf.exists() else ""
+    return p, (sf.read_text(encoding="utf-8") if sf.exists() else "")
+
+
+def _make_view(row, original: bool = False) -> Path:
+    """Erzeugt die grosse Ansicht (Parameter + Script bzw. Kamera-Original) und legt sie im Cache ab."""
+    cache = _view_cache(row["id"], original)
+    p, script = _view_state(row)
     path = catalog.raw_path(row)
     rgb = catalog.embedded_rgb(path) if (original or _plain(p, script)) else None
     if rgb is None:
-        if original:
-            img, _ = develop(path, Params(), max_side)  # Standardentwicklung, wenn kein eingebettetes Bild vorhanden ist
-            rgb = to_uint8(img)
-        else:
-            rgb = to_uint8(_develop_with_script(row, p, script, max_side, policy.PREVIEW_TIMEOUT))
+        with _view_sem:
+            if original:
+                img, _ = develop(path, Params(), VIEW_SIDE)  # Standardentwicklung, wenn kein eingebettetes Bild vorhanden ist
+                rgb = to_uint8(img)
+            else:
+                rgb = to_uint8(_develop_with_script(row, p, script, VIEW_SIDE, policy.PREVIEW_TIMEOUT))
     h, w = rgb.shape[:2]
-    if max(h, w) > max_side:
+    if max(h, w) > VIEW_SIDE:
         import cv2
 
-        f = max_side / max(h, w)
+        f = VIEW_SIDE / max(h, w)
         rgb = cv2.resize(rgb, (int(w * f), int(h * f)), interpolation=cv2.INTER_AREA)
     catalog.VIEWS.mkdir(parents=True, exist_ok=True)
-    cache.write_bytes(to_jpeg(rgb, 90))
-    return FileResponse(cache, headers=hdr)
+    cache.write_bytes(to_jpeg(rgb, 92))
+    return cache
+
+
+def _refresh_view(pid: str) -> None:
+    """Nach dem Speichern im Hintergrund die grosse Ansicht erneuern (nur für bearbeitete Fotos; unbearbeitete sind sofort da)."""
+    try:
+        row = catalog.db().execute("SELECT * FROM photos WHERE id=?", (pid,)).fetchone()
+        if row:
+            p, script = _view_state(row)
+            if not _plain(p, script):
+                _make_view(row)
+    except Exception:  # noqa: BLE001 - nur Komfort
+        pass
+
+
+@app.get("/api/photos/{pid}/view")
+def photo_view(pid: str, original: bool = False, cached: bool = False, prefetch: bool = False):
+    """Grosse Ansicht für die Galerie: bearbeitet (Parameter + Script) oder mit original=1 das Kamera-Vorschaubild.
+    Wird zwischengespeichert und erneuert, sobald Parameter oder Script neuer sind.
+    cached=1: nur liefern, wenn schon erzeugt (sonst 404). prefetch=1: nichts Aufwendiges rendern (sonst 204)."""
+    row = _photo(pid)
+    hdr = {"Cache-Control": "no-cache"}
+    if _view_fresh(row, original):
+        return FileResponse(_view_cache(pid, original), headers=hdr)
+    if cached:
+        raise HTTPException(404)
+    if prefetch:
+        p, script = _view_state(row)
+        if not (original or _plain(p, script)):
+            return Response(status_code=204)
+    return FileResponse(_make_view(row, original), headers=hdr)
 
 
 class MetaBody(BaseModel):
@@ -379,6 +422,7 @@ def save_params(pid: str, body: YamlBody, bg: BackgroundTasks):
     f.write_text(body.yaml, encoding="utf-8")  # Text bleibt wie getippt (Kommentare bleiben erhalten)
     catalog.sync_index(pid, p)
     bg.add_task(_refresh_thumb, pid)
+    bg.add_task(_refresh_view, pid)
     return {"ok": True}
 
 
@@ -431,6 +475,7 @@ def save_script(pid: str, body: ScriptBody, bg: BackgroundTasks):
         if f.exists():
             f.unlink()
             bg.add_task(_refresh_thumb, pid)
+            bg.add_task(_refresh_view, pid)
         return {"ok": True, "gespeichert": False}
     from .checks import check_script
 
@@ -440,6 +485,7 @@ def save_script(pid: str, body: ScriptBody, bg: BackgroundTasks):
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(body.script, encoding="utf-8")
     bg.add_task(_refresh_thumb, pid)
+    bg.add_task(_refresh_view, pid)
     return {"ok": True, "gespeichert": True}
 
 
