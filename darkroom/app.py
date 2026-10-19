@@ -52,7 +52,15 @@ def _script_params(p: Params, scale: float) -> dict:
 
 def _develop_with_script(row, p: Params, script: str | None, max_side: int | None, timeout: float):
     """RAW + Parameter -> Bild, danach optional das Script in der Sandbox."""
-    img, scale = develop(catalog.raw_path(row), p, max_side)
+    path = catalog.raw_path(row)
+    try:
+        img, scale = develop(path, p, max_side)
+    except Exception as e:  # noqa: BLE001 - verständliche Meldung statt «500»
+        import traceback
+
+        traceback.print_exc()
+        what = "Datei nicht gefunden" if not path.exists() else f"{type(e).__name__}: {e}"
+        raise HTTPException(500, f"Entwickeln von {path.name} fehlgeschlagen ({what}). Details im Container-Log.")
     if script and script.strip():
         try:
             img = sandbox.run_script(script, img, _script_params(p, scale), timeout=timeout)
@@ -409,7 +417,10 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
     if p.lens.enabled:
         from . import lenscorr
 
-        headers["X-Lens-Status"] = quote(lenscorr.vignette_report(catalog.raw_path(row)) if p.lens.vignetting else lenscorr.status(catalog.raw_path(row)))
+        try:
+            headers["X-Lens-Status"] = quote(lenscorr.vignette_report(catalog.raw_path(row)) if p.lens.vignetting else lenscorr.status(catalog.raw_path(row)))
+        except Exception as e:  # noqa: BLE001 - Statuszeile ist nur Komfort
+            headers["X-Lens-Status"] = quote(f"Objektivkorrektur: {type(e).__name__}: {e}")
     return Response(to_jpeg(to_uint8(img)), media_type="image/jpeg", headers=headers)
 
 
