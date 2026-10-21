@@ -5,10 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Darkroom</title>
 <style>
-  :root { --bg:#1b1b1d; --panel:#242427; --line:#37373c; --fg:#e4e4e7; --mute:#8d8d95; --acc:#e0a24a; }
+  :root { --bg:#1b1b1d; --panel:#242427; --line:#37373c; --fg:#e4e4e7; --mute:#8d8d95; --acc:#e0a24a; --thumb:#4a4a52; --thumb-hover:#6a6a74; color-scheme:dark; }
   * { box-sizing: border-box; }
+  /* dunkle, schmale Scrollbalken überall (Raster, Seitenleisten, Editoren, Dialoge) */
+  * { scrollbar-width:thin; scrollbar-color:var(--thumb) transparent; }
+  @supports not (scrollbar-color: auto) {  /* ältere WebKit-Fenster */
+    ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-corner { background:transparent; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--thumb); border-radius:6px; border:2px solid var(--bg); }
+    ::-webkit-scrollbar-thumb:hover { background:var(--thumb-hover); }
+  }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; height:100vh; display:flex; flex-direction:column; }
-  header { display:flex; gap:12px; align-items:center; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header { display:flex; flex-wrap:wrap; row-gap:6px; gap:8px; align-items:center; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); }
   header h1 { font-size:15px; margin:0 12px 0 0; letter-spacing:.04em; }
   button, select, input { background:#2e2e33; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
   button { cursor:pointer; } button:hover { border-color:var(--acc); }
@@ -18,11 +26,13 @@
   #filters { width:210px; padding:12px; border-right:1px solid var(--line); overflow:auto; display:flex; flex-direction:column; gap:10px; }
   #filters label { color:var(--mute); font-size:12px; display:block; margin-bottom:3px; }
   #filters select, #filters input { width:100%; }
-  #grid { --cell:220px; flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,var(--cell)); justify-content:start; gap:10px; align-content:start; grid-auto-rows:max-content; }
+  #grid { --cell:220px; flex:1; overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--cell), 1fr)); gap:10px; align-content:start; grid-auto-rows:max-content; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; overflow:hidden; cursor:pointer; }
   .card:hover { border-color:var(--acc); }
-  .card .ph { width:100%; height:calc(var(--cell) * 0.75); background:#111; position:relative; }  /* Höhe wächst mit der Breite */
-  #searchWrap { flex:1 1 auto; min-width:260px; max-width:860px; position:relative; display:flex; align-items:center; gap:6px; }
+  .card .ph { width:100%; aspect-ratio:4 / 3; background:#111; position:relative; }  /* Spalten füllen die ganze Breite, die Höhe wächst mit */
+  #lightTools { display:flex; flex-wrap:nowrap; align-items:center; gap:6px; }
+  #lightTools button, #syncBox button { white-space:nowrap; }
+  #searchWrap { flex:1 1 220px; min-width:150px; max-width:860px; position:relative; display:flex; align-items:center; gap:6px; }
   #fq { width:100%; font-size:15px; padding:9px 34px 9px 38px; border-radius:22px; background:#1f1f22; }
   #fq:focus { outline:none; border-color:var(--acc); }
   #searchWrap .ico { position:absolute; left:14px; color:var(--mute); pointer-events:none; }
@@ -979,7 +989,7 @@ function drawSync() {
   const s = desk.sync, b = $('#syncBtn'), n = (s.konflikte || []).length;
   b.classList.remove('on', 'off', 'err');
   $('#confBtn').style.display = n ? 'inline-block' : 'none'; $('#confBtn').textContent = `⚠ ${n} Konflikt${n === 1 ? '' : 'e'}`;
-  if (!desk.configured) { b.classList.add('off'); b.textContent = '☁ Mit Server verbinden'; b.title = 'Server eintragen, damit Fotos und Änderungen abgeglichen werden'; return; }
+  if (!desk.configured) { b.classList.add('off'); b.textContent = '☁ Verbinden'; b.title = 'Server eintragen, damit Fotos und Änderungen abgeglichen werden'; return; }
   if (s.running) {
     const pct = s.phase.startsWith('RAW') && s.bytes_total ? ` ${Math.round(100 * s.bytes_done / s.bytes_total)} %` : (s.total ? ` ${s.done}/${s.total}` : '');
     b.classList.add('on'); b.textContent = `☁ ${s.phase}${pct} ■`; b.title = (s.current || '') + ' (Klick = stoppen)'; return;
