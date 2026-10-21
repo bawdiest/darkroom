@@ -157,7 +157,8 @@ class Rolls(unittest.TestCase):
             catalog.roll_delete("Neu")
 
     def test_import_creates_roll_for_new_photos(self):
-        import cv2, numpy as np
+        from darkroom.cvx import cv2
+        import numpy as np
         lib = catalog.LIBRARY / "imp"; lib.mkdir(exist_ok=True)
         for n in ("a", "b"):
             cv2.imwrite(str(lib / f"{n}.jpg"), np.full((40, 60, 3), 120, np.uint8))

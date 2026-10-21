@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import cv2
+from .cvx import cv2
 import numpy as np
 
 from .schema import Params

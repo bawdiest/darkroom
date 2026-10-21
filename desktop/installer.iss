@@ -1,7 +1,15 @@
-; Inno Setup (https://jrsoftware.org/isinfo.php): Installer für Windows. Aufruf: iscc /DAppVersion=0.1.0 desktop\installer.iss
+; Inno Setup (https://jrsoftware.org/isinfo.php): Installer für Windows. Aufruf: iscc /DAppVersion=0.1.0 /DAppArch=x64 desktop\installer.iss (AppArch: x64 oder arm64)
 ; Installiert ohne Administratorrechte in das Benutzerprofil. Nach dem PyInstaller-Build (dist\Darkroom\) ausführen.
 #ifndef AppVersion
   #define AppVersion "0.1.0"
+#endif
+#ifndef AppArch
+  #define AppArch "x64"
+#endif
+#if AppArch == "arm64"
+  #define ArchAllowed "arm64"
+#else
+  #define ArchAllowed "x64compatible"  ; läuft auch auf Windows on ARM (Emulation)
 #endif
 
 [Setup]
@@ -13,10 +21,11 @@ DefaultDirName={localappdata}\Programs\Darkroom
 DefaultGroupName=Darkroom
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=Darkroom-{#AppVersion}-setup
+OutputBaseFilename=Darkroom-{#AppVersion}-windows-{#AppArch}-setup
 Compression=lzma2
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#ArchAllowed}
+ArchitecturesInstallIn64BitMode={#ArchAllowed}
 UninstallDisplayIcon={app}\Darkroom.exe
 
 [Files]

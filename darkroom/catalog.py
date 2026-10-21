@@ -8,7 +8,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-import cv2
+from .cvx import cv2
 import numpy as np
 
 from .render import IMG_EXT, RAW_EXT, render, to_jpeg

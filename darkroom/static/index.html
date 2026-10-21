@@ -956,6 +956,8 @@ $('#uList').addEventListener('change', async e => {
 let desk = null, deskTimer = null, wasRunning = {sync:false, imp:false};
 function initDesktop() {
   document.body.classList.add('desktop');
+  const beat = () => fetch('/api/desktop/ping', {method:'POST', keepalive:true}).catch(() => {});
+  beat(); setInterval(beat, 20000);  // Herzschlag: ohne Fenster merkt die App daran, dass der Browser zu ist
   $('#gen').disabled = true; $('#gen').title = 'Scripts erzeugt und führt der Server aus.';
   $('#genStatus').textContent = 'Scripts laufen in der Desktop-App nicht lokal. Du kannst sie schreiben und speichern; nach dem Abgleich führt der Server sie aus.';
   pollDesktop();

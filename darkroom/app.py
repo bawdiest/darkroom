@@ -270,7 +270,7 @@ def _make_view(row, original: bool = False) -> Path:
                 rgb = to_uint8(_develop_with_script(row, p, script, VIEW_SIDE, policy.PREVIEW_TIMEOUT))
     h, w = rgb.shape[:2]
     if max(h, w) > VIEW_SIDE:
-        import cv2
+        from .cvx import cv2
 
         f = VIEW_SIDE / max(h, w)
         rgb = cv2.resize(rgb, (int(w * f), int(h * f)), interpolation=cv2.INTER_AREA)
@@ -618,7 +618,7 @@ def export_photo(pid: str, body: ExportBody):
 def share_photo(pid: str, body: ExportBody):
     """Teilen vom Handy: das Bild aus der Galerie-Ansicht (Parameter + Script), nach Ausgabeprofil verkleinert.
     Schneller als der volle Export (keine RAW-Entwicklung in voller Auflösung); nichts wird auf dem Server abgelegt."""
-    import cv2
+    from .cvx import cv2
     import numpy as np
 
     row = _photo(pid)

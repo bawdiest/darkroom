@@ -4,7 +4,7 @@ import sys
 import threading
 from pathlib import Path
 
-import cv2
+from darkroom.cvx import cv2  # OpenCV oder Ersatz (Windows ARM64)
 import numpy as np
 import pytest
 

@@ -21,6 +21,7 @@ from .syncclient import SyncError, SyncJob, Syncer
 router = APIRouter(prefix="/api/desktop")
 JOB = SyncJob()
 ONLINE = {"ok": False, "at": 0.0}
+LAST_PING = {"at": 0.0}  # letzter Herzschlag der Seite (ohne eigenes Fenster beendet sich die App, wenn er ausbleibt)
 _pending_cache = {"at": 0.0, "n": 0, "key": ""}
 
 
@@ -163,6 +164,12 @@ def pending(ttl: float = 10.0) -> int:
     n = syncclient.pending(catalog.db())
     _pending_cache.update(at=now, n=n, key=catalog._ws().key)
     return n
+
+
+@router.post("/ping")
+def ping():
+    LAST_PING["at"] = time.time()
+    return {"ok": True}
 
 
 @router.get("/state")

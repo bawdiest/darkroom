@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-import cv2
+from .cvx import cv2
 import numpy as np
 
 from . import catalog

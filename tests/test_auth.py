@@ -1,7 +1,7 @@
 """Tests für Anmeldung, Benutzerverwaltung und die Trennung der Bibliotheken."""
 import sys
 
-import cv2
+from darkroom.cvx import cv2  # OpenCV oder Ersatz (Windows ARM64)
 import numpy as np
 import pytest
 

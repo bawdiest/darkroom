@@ -1,0 +1,15 @@
+# Windows ARM64 (natives Python): wie requirements.txt, aber ohne OpenCV und lensfunpy. Für beide gibt es dort keine fertigen Pakete.
+# - OpenCV ersetzt darkroom/cvx.py (PIL, SciPy, scikit-image; getestet gegen OpenCV in tests/test_cvx.py).
+# - Die Objektivkorrektur (lensfunpy) fehlt in dieser Version; die App zeigt dann «lensfunpy nicht installiert».
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pyyaml>=6.0
+numpy>=1.26
+scipy>=1.11
+scikit-image>=0.22
+Pillow>=10.0
+rawpy>=0.21
+exifread>=3.0
+httpx>=0.27
+pytest>=8.0

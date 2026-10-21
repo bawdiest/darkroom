@@ -6,7 +6,7 @@ import struct
 from pathlib import Path
 from typing import Literal, Optional
 
-import cv2
+from .cvx import cv2
 import numpy as np
 import yaml
 from pydantic import BaseModel, Field

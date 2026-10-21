@@ -64,7 +64,7 @@ class Fit(unittest.TestCase):
         self.assertLess(float(np.abs(got - TARGET).mean()), r["after"] + 0.01)
 
     def test_sharpening_detected(self):
-        import cv2
+        from darkroom.cvx import cv2
         blurred = cv2.GaussianBlur(BASE, (0, 0), 1.2)
         sharp_target = np.clip(_tone(blurred, TRUE) + 1.2 * (_tone(blurred, TRUE) - cv2.GaussianBlur(_tone(blurred, TRUE), (0, 0), 1.0)), 0, 1)
         with mock.patch.object(automatch, "_embedded_preview", return_value=sharp_target.astype(np.float32)), \

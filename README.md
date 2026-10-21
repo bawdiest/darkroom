@@ -180,7 +180,19 @@ Das Skript installiert die Abhängigkeiten in `.venv-build`, baut und startet zu
 baut bei einem Tag `v*` oder per Play-Knopf auf Runnern mit den Tags `windows` bzw. `macos` und auf jedem Docker-Runner für Linux.
 Aus dem Quellbaum startet man die App mit `python desktop/main.py` (Optionen `--library`, `--data`, `--browser`).
 
-- **Windows:** nicht signiert, SmartScreen meldet «Unbekannter Herausgeber» → «Weitere Informationen» → «Trotzdem ausführen».
+- **Windows on ARM:** Es gibt zwei Windows-Versionen (`Darkroom-<Version>-windows-x64` und `-windows-arm64`).
+  Die **x64**-Version läuft überall, auch auf ARM-Rechnern per Emulation, mit vollem Funktionsumfang (OpenCV, Objektivkorrektur).
+  Die **arm64**-Version läuft nativ und ist dort schneller, hat aber zwei Einschränkungen: Für OpenCV und lensfunpy gibt es keine
+  ARM64-Pakete, und das Fenster ist ein Edge-Anwendungsfenster (ohne Tabs und Adressleiste, Edge ist auf jedem Windows 10/11
+  vorhanden) statt eines pywebview-Fensters, denn .NET/pythonnet und QtWebEngine laufen auf ARM64 nicht. Beim Schliessen des
+  Fensters beendet sich die App; «Ordner wählen» fragt dort nach dem Pfad als Text. OpenCV ersetzt `darkroom/cvx.py` (PIL, SciPy, scikit-image; `tests/test_cvx.py` vergleicht jede Funktion mit
+  OpenCV: Drehen, Weichzeichnen, Skalieren stimmen praktisch überein, die Rauschreduzierung rechnet im gleichen Verfahren etwas
+  anders und ist langsamer, ca. 9 s statt 1 s bei 1,5 Megapixeln), und die **Objektivkorrektur fehlt**. Gebaut wird sie mit
+  `desktop\build.ps1 -Python <Pfad zu Python 3.12 ARM64>` auf einem ARM-Rechner; die Architektur erkennt das Skript am Python.
+  GitHubs ARM-Rechner stehen nur öffentlichen Repos zur Verfügung: für das Release dort die Repo-Variable `BUILD_WINDOWS_ARM=true`
+  setzen, sonst bleibt dieser Job aus.
+- **Windows (alle):** nicht signiert, SmartScreen meldet «Unbekannter Herausgeber» → «Weitere Informationen» → «Trotzdem ausführen».
+  Fehlermeldungen der fensterlosen App stehen in `%APPDATA%\Darkroom\darkroom.log`.
   Das Fenster nutzt WebView2 (bei Windows 10/11 vorhanden).
 - **macOS:** nicht signiert/notarisiert: beim ersten Start Rechtsklick → «Öffnen», oder `xattr -dr com.apple.quarantine Darkroom.app`.
 - **Linux:** Qt liegt dabei (kein System-WebKit nötig); auf manchen Distributionen fehlen `libxcb-cursor0` o. Ä.
