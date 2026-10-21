@@ -50,6 +50,7 @@ class Fit(unittest.TestCase):
         self.assertIsNotNone(r.get("script"))
         self.assertLess(r["after"], r["after_params"] * 0.8)  # Stufe 2 bringt deutlich mehr als nur Parameter
 
+    @unittest.skipIf(__import__("darkroom.sandbox", fromlist=["x"]).detect_level() == "none", "keine Sandbox verfügbar (bubblewrap/unshare)")
     def test_generated_script_is_valid_and_runs(self):
         from darkroom import sandbox
         from darkroom.checks import check_script

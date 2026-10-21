@@ -13,6 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault("DARKROOM_SANDBOX_MIN", "unshare")
 
 from darkroom import ai, sandbox  # noqa: E402
+
+# Ohne funktionierende Isolation (Windows, macOS, Linux ohne unprivilegierte User-Namespaces, z. B. manche CI-Rechner) können Scripts
+# nicht laufen; diese Tests prüfen genau das und werden dann übersprungen statt zu scheitern.
+NO_SANDBOX = sandbox.detect_level() == "none"
+needs_sandbox = unittest.skipIf(NO_SANDBOX, "keine Sandbox verfügbar (bubblewrap/unshare)")
 from darkroom.checks import ScriptError, check_script, validate_output  # noqa: E402
 from darkroom.output import OutputProfile, build_adobergb_icc, encode, srgb_to_adobergb  # noqa: E402
 
@@ -54,6 +59,7 @@ class StaticChecks(unittest.TestCase):
                 self.assertTrue(check_script(code), f"nicht abgelehnt: {name}")
 
 
+@needs_sandbox
 class SandboxRun(unittest.TestCase):
     def test_good_script(self):
         out = run(GOOD)
@@ -162,6 +168,7 @@ def block(code):
     return f"```python\n{code}\n```\nErklärung."
 
 
+@needs_sandbox
 class AILoop(unittest.TestCase):
     def gen(self, replies, **kw):
         prov = FakeProvider(replies)
@@ -210,6 +217,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@needs_sandbox
 class Infrastructure(unittest.TestCase):
     def test_bwrap_gets_loader_config_and_lib_path(self):
         cmd = sandbox._bwrap_prefix(Path(tempfile.gettempdir()))

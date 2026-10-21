@@ -27,6 +27,23 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
 
+  # Die Sandbox-Tests brauchen unprivilegierte User-Namespaces (bubblewrap). Auf GitHubs Ubuntu-Rechnern sind sie gesperrt, im Job
+  # «test» werden diese Tests deshalb übersprungen. Hier werden sie erlaubt und die Tests laufen wirklich; der Job blockiert
+  # das Release nicht (continue-on-error), zeigt aber, ob die Sandbox auf einem normalen Linux funktioniert.
+  sandbox-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bubblewrap libglib2.0-0 libgl1
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests/test_sandbox.py tests/test_automatch.py
+
   build:
     # Gebaut wird nur für einen Tag oder von Hand; ein Betriebssystem kann nur für sich selbst bauen.
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
