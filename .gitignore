@@ -6,3 +6,8 @@ data/exports/
 _to_delete/
 .venv/
 venv/
+
+# Zugangsdaten (Passwort-Hashes, Sitzungen), nie einchecken
+auth.db
+**/auth.db
+data/users/

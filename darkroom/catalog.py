@@ -13,21 +13,23 @@ import numpy as np
 
 from .render import IMG_EXT, RAW_EXT, render, to_jpeg
 from .schema import Params, dump_params, load_params
+from .workspace import WsPath, current as _ws
 from .xmp import read_xmp
 
-LIBRARY = Path(os.environ.get("DARKROOM_LIBRARY", "./library")).resolve()
-DATA = Path(os.environ.get("DARKROOM_DATA", "./data")).resolve()
-PARAMS_DIR = DATA / "params"  # gehoert ins Git-Repo
-PRESETS_DIR = DATA / "presets"  # gehoert ins Git-Repo
-SCRIPTS_DIR = DATA / "scripts"  # ein Script pro Foto, gehoert ins Git-Repo
-SCRIPT_PRESETS_DIR = DATA / "script_presets"
-EXPORTS_DIR = DATA / "exports"
-AI_TAGS_DIR = DATA / "ai_tags"  # ein JSON pro Foto mit den KI-Tags (gehört ins Git-Repo)
-ROLLS_FILE = DATA / "rolls.yaml"  # Filmrollen (Name -> Fotos; jedes Foto in höchstens einer), gehört ins Git-Repo
-CATALOGS_FILE = DATA / "catalogs.yaml"  # manuelle Kataloge (Name -> Fotos), gehört ins Git-Repo
-THUMBS = DATA / "cache" / "thumbs"
-VIEWS = DATA / "cache" / "views"  # grosse Ansichten der Galerie
-DB_PATH = DATA / "cache" / "index.db"
+# Pfade des aktuellen Arbeitsbereichs (pro Benutzer, siehe workspace.py); ohne Anmeldung der Standard aus DARKROOM_LIBRARY/DARKROOM_DATA
+LIBRARY = WsPath("LIBRARY")
+DATA = WsPath("DATA")
+PARAMS_DIR = WsPath("PARAMS_DIR")  # gehoert ins Git-Repo
+PRESETS_DIR = WsPath("PRESETS_DIR")  # gehoert ins Git-Repo
+SCRIPTS_DIR = WsPath("SCRIPTS_DIR")  # ein Script pro Foto, gehoert ins Git-Repo
+SCRIPT_PRESETS_DIR = WsPath("SCRIPT_PRESETS_DIR")
+EXPORTS_DIR = WsPath("EXPORTS_DIR")
+AI_TAGS_DIR = WsPath("AI_TAGS_DIR")  # ein JSON pro Foto mit den KI-Tags (gehört ins Git-Repo)
+ROLLS_FILE = WsPath("ROLLS_FILE")  # Filmrollen (Name -> Fotos; jedes Foto in höchstens einer), gehört ins Git-Repo
+CATALOGS_FILE = WsPath("CATALOGS_FILE")  # manuelle Kataloge (Name -> Fotos), gehört ins Git-Repo
+THUMBS = WsPath("THUMBS")
+VIEWS = WsPath("VIEWS")  # grosse Ansichten der Galerie
+DB_PATH = WsPath("DB_PATH")
 
 THUMB_SIZE = 640  # lange Seite der Vorschaubilder in Pixeln
 
@@ -184,9 +186,13 @@ def make_thumb(path: Path, pid: str, p: Params, original: bool = False) -> None:
 
 
 def _in_data(path: Path) -> bool:
-    if DATA not in path.parents:
+    """Gehört der Pfad nicht zur Fotobibliothek: Datenordner oder Bibliothek eines anderen Benutzers."""
+    ws = _ws()
+    if any(path == x or x in path.parents for x in ws.exclude):
+        return True
+    if ws.DATA not in path.parents:
         return False
-    return path.relative_to(DATA).parts[0] in {"cache", "params", "scripts", "ai_tags", "presets", "script_presets", "exports"}
+    return path.relative_to(ws.DATA).parts[0] in {"cache", "params", "scripts", "ai_tags", "presets", "script_presets", "exports", "users"}
 
 
 def scan(import_xmp: bool = True, roll: str | None = None) -> dict:
@@ -267,7 +273,7 @@ def edit_state(rel: str) -> dict:
     has_script = bool(text.strip())
     auto_script = has_script and text.lstrip().startswith("# auto_match")  # vom Angleich-Job erzeugt
     key = (pm, has_script, auto_script)
-    hit = _STATE_CACHE.get(rel)
+    hit = _STATE_CACHE.get((_ws().key, rel))
     if hit and hit[0] == key:
         edited = hit[1]
     else:
@@ -275,7 +281,7 @@ def edit_state(rel: str) -> dict:
             edited = pf.exists() and is_edited(load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR))
         except Exception:
             edited = False
-        _STATE_CACHE[rel] = (key, edited)
+        _STATE_CACHE[(_ws().key, rel)] = (key, edited)
     return {"edited": bool(edited), "has_script": has_script, "auto_script": auto_script}
 
 
@@ -538,7 +544,7 @@ def delete_duplicate(pid: str) -> None:
         cats = rd()
         if any(rel in ps for ps in cats.values()):
             wr({n: [p for p in ps if p != rel] for n, ps in cats.items()})
-    _STATE_CACHE.pop(rel, None)
+    _STATE_CACHE.pop((_ws().key, rel), None)
 
 
 def restore_duplicates() -> int:
@@ -827,7 +833,7 @@ def _move_one(con, row_id: str, old: str, new: str, cats: dict, rolls: dict) -> 
             con.execute("UPDATE photos SET id=?, path=?, source=CASE WHEN source IS NULL THEN NULL ELSE ? END WHERE id=?", (nid, npath, new, pid))
             for ps in (*cats.values(), *rolls.values()):
                 ps[:] = [npath if p == path else p for p in ps]
-            _STATE_CACHE.pop(path, None)
+            _STATE_CACHE.pop((_ws().key, path), None)
         con.commit()
     except Exception:
         raise
@@ -850,7 +856,7 @@ def organize(ids: list[str] | None = None) -> dict:
             fehler.append(f"{m['von']}: {e}")
     write_catalogs(cats)
     write_rolls(rolls)
-    for d in sorted((p for p in LIBRARY.rglob("*") if p.is_dir() and p != DATA and DATA not in p.parents), key=lambda p: len(p.parts), reverse=True):
+    for d in sorted((p for p in LIBRARY.rglob("*") if p.is_dir() and p != DATA and DATA not in p.parents and not _in_data(p)), key=lambda p: len(p.parts), reverse=True):
         try:
             d.rmdir()  # nur leere Ordner
         except OSError:

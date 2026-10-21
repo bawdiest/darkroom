@@ -7,6 +7,7 @@ Solange nur Werte des Jobs vorhanden sind, gilt das Foto weiter als «unbearbeit
 """
 from __future__ import annotations
 
+import contextvars
 import threading
 import time
 from pathlib import Path
@@ -15,6 +16,7 @@ import cv2
 import numpy as np
 
 from . import catalog
+from .workspace import PerWorkspace
 from .render import RAW_EXT, _load_base, _sharpen, _tone
 from .schema import Params, Sharpen, dump_params, load_params
 
@@ -276,7 +278,7 @@ class MatchJob:
             self.stop_flag.clear()
             self.state.update(running=True, total=len(todo), done=0, angeglichen=0, uebersprungen=0, fehler=0, aktuell="",
                               gestartet=time.time(), beendet=None, letzte_fehler=[])
-            self.thread = threading.Thread(target=self._run, args=(todo,), daemon=True, name="automatch")
+            self.thread = threading.Thread(target=contextvars.copy_context().run, args=(self._run, todo), daemon=True, name="automatch")  # mit dem Arbeitsbereich des Benutzers
             self.thread.start()
             return True
 
@@ -306,4 +308,4 @@ class MatchJob:
             self.state.update(running=False, aktuell="", beendet=time.time())
 
 
-JOB = MatchJob()
+JOB = PerWorkspace(MatchJob)  # ein Job pro Benutzer

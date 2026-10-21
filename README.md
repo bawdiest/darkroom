@@ -20,7 +20,7 @@ docker compose up --build   # http://localhost:8000  ->  "Bibliothek scannen"
 3. *Deploy the stack*. Portainer baut das Image aus dem Repo. Mit *GitOps updates* (Polling oder Webhook von GitLab) wird bei jedem Push neu gebaut.
 4. Prüfen: Statuszeile in der Dunkelkammer muss **Sandbox: voll** zeigen, sonst sind Scripts gesperrt (siehe Abschnitt Sandbox).
 
-Die App hat **keine Anmeldung**. Betreibe sie nur im eigenen Netz/VPN oder hinter einem Reverse Proxy mit Authentifizierung,
+Die App hat eine **Anmeldung mit mehreren Benutzern** (Abschnitt «Mehrere Benutzer»). Betreibe sie trotzdem nur über https (Reverse Proxy) oder im eigenen Netz/VPN,
 denn sie kann Dateien in der Foto-Bibliothek schreiben und den KI-Schlüssel nutzen.
 
 Ohne Docker (z. B. Bazzite/Fedora, bubblewrap ist dort meist schon da):
@@ -133,6 +133,18 @@ Auf schmalen Bildschirmen (Handy, bis 820 px Breite, auch im Querformat) schalte
 - **Leuchttisch:** ☰ öffnet Filmrollen, Kataloge, «Nach Datum» und die Filter als Seitenmenü; die Suche liegt darunter in voller Breite. Raster mit grossen Kacheln; Tippen öffnet die Galerie, der Kreis oben rechts auf der Kachel wählt aus (dann «⇪ Teilen» für mehrere Fotos, bis 30). Verändern lässt sich auf dem Handy nichts ausser der Bewertung: keine Tags, Verschieben, Katalogpflege oder Duplikate.
 - **Teilen / Export:** «⇪ Teilen» (Galerie oder Auswahl) rendert die Fotos so, wie sie in der Galerie aussehen, im gewählten Profil (Standard **WhatsApp**: 1600 px, JPEG 85 %; ausserdem «Gross» 3000 px und alle eigenen sRGB-JPEG-Profile bis 3200 px) und öffnet das Teilen-Menü des Handys. Das geht nur über **https://** (Reverse Proxy); über http werden die Dateien stattdessen heruntergeladen.
 - **Galerie:** Bild füllt den Bildschirm. Wischen nach links/rechts blättert, Doppeltippen oder Zweifinger-Zoom vergrössert (verschieben mit einem Finger), ⓘ blendet die Angaben als Blatt von unten ein (Bewertung zum Antippen, Tags, Filmrolle, Kataloge, Aufnahmedaten), «Original» wechselt zum Kamera-Vorschaubild.
+
+## Mehrere Benutzer
+
+Beim ersten Aufruf legst du den **Admin** an; er behält die bisherige Bibliothek und alle bisherigen Daten (nichts wird verschoben oder kopiert). Der Admin legt über das Konto-Symbol oben rechts weitere Benutzer an (Name, Passwort, optional Admin), setzt Passwörter zurück und löscht Konten. Ohne Anmeldung gibt es keinen Zugriff auf die Daten (nur `/api/status` für den Healthcheck bleibt offen).
+
+- **Getrennt pro Benutzer:** Fotos, Parameter, Scripts, Tags, KI-Tags, Bewertungen, Filmrollen, Kataloge, Duplikate, Presets, Vorschauen, Exporte und die Hintergrundjobs (Angleichen, KI-Tags). Niemand sieht oder ändert die Daten der anderen.
+- **Wo liegt was:** weitere Benutzer bekommen `<DARKROOM_USERS_LIBRARY>/<name>` für die Fotos (Standard: `<DARKROOM_LIBRARY>/_users/<name>`, wird beim Scan des Admins übersprungen) und `<DARKROOM_DATA>/users/<name>` für ihre Daten. Kopiere die Fotos eines Benutzers in seinen Ordner und lass ihn «Bibliothek scannen» drücken.
+- **Gemeinsam:** der KI-Schlüssel (alle Benutzer nutzen dieselben Kosten), die Sandbox und der Server.
+- **Passwörter** werden mit scrypt gespeichert, Sitzungen laufen 30 Tage (Cookie, nur über https mit «Secure»), nach 5 Fehlversuchen gilt eine Pause von 5 Minuten. Die Zugangsdaten liegen in `<DARKROOM_DATA>/auth.db`: **nicht ins Git-Repo einchecken** (in die `.gitignore` des Datenordners aufnehmen) und mit sichern.
+- **Gelöschte Konten** verlieren nur ihren Zugang; Fotos und Daten bleiben auf dem Laufwerk.
+- **Anmeldung abschalten** (ein Benutzer wie früher, z. B. hinter einem Proxy mit eigener Authentifizierung): `DARKROOM_AUTH=off`.
+- **Passwort vergessen:** Ein anderer Admin setzt es zurück. Ist es der einzige Admin, lösche `auth.db` (dann wird beim nächsten Aufruf wieder ein Admin angelegt, der die bisherigen Ordner übernimmt; Daten der weiteren Benutzer bleiben liegen, ihre Konten musst du neu anlegen).
 
 ## Ausgabeprofile
 

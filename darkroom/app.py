@@ -12,7 +12,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import ai, automatch, catalog, policy, sandbox, tagging
+from . import ai, authapi, automatch, catalog, policy, sandbox, tagging
+from .workspace import current as _ws
 from .checks import ScriptError
 from .output import encode, load_profiles
 from .render import develop, to_jpeg, to_uint8
@@ -20,6 +21,8 @@ from .schema import Params, dump_params, load_params
 from .xmp import write_xmp
 
 app = FastAPI(title="Darkroom")
+app.middleware("http")(authapi.gate)  # ohne Anmeldung kein Zugriff auf /api; setzt den Arbeitsbereich des Benutzers
+app.include_router(authapi.router)
 STATIC = Path(__file__).parent / "static"
 
 
@@ -70,14 +73,14 @@ def _develop_with_script(row, p: Params, script: str | None, max_side: int | Non
 
 
 _thumb_lock = threading.Lock()
-_queued: set[str] = set()
+_queued: set[tuple[str, str]] = set()  # (Arbeitsbereich, Foto-ID): gleiche Pfade bei verschiedenen Benutzern haben gleiche IDs
 
 
 def _refresh_and_unqueue(pid: str) -> None:
     try:
         _refresh_thumb(pid)
     finally:
-        _queued.discard(pid)
+        _queued.discard((_ws().key, pid))
 
 
 def _refresh_thumb(pid: str) -> None:
@@ -117,9 +120,10 @@ def photos(bg: BackgroundTasks, q: str | None = None, camera: str | None = None,
            min_rating: int = 0, tag: str | None = None, state: str | None = None,
            roll: str | None = None, date: str | None = None, catalog_name: str | None = Query(None, alias="catalog")):
     out = catalog.list_photos(q, camera, lens, min_rating, tag, state, roll=roll, date=date, catalog=catalog_name)
-    stale = [d["id"] for d in out if d["thumb_stale"] and d["id"] not in _queued]
+    key = _ws().key
+    stale = [d["id"] for d in out if d["thumb_stale"] and (key, d["id"]) not in _queued]
     for pid in stale[:12]:  # veraltete Vorschaubilder nach und nach im Hintergrund erneuern
-        _queued.add(pid)
+        _queued.add((key, pid))
         bg.add_task(_refresh_and_unqueue, pid)
     return out
 

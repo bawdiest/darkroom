@@ -12,6 +12,7 @@ services:
     environment:
       DARKROOM_LIBRARY: /library
       DARKROOM_DATA: /data
+      DARKROOM_AUTH: ${DARKROOM_AUTH:-on}  # off = ohne Anmeldung (ein Benutzer)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DARKROOM_AI_PROVIDER: ${DARKROOM_AI_PROVIDER:-claude}
       DARKROOM_AI_MODEL: ${DARKROOM_AI_MODEL:-claude-sonnet-5-5}

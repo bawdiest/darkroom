@@ -38,6 +38,7 @@ def env(tmp_path, monkeypatch):
     (data / "presets").mkdir(parents=True)
     monkeypatch.setenv("DARKROOM_LIBRARY", str(lib))
     monkeypatch.setenv("DARKROOM_DATA", str(data))
+    monkeypatch.setenv("DARKROOM_AUTH", "off")  # Anmeldung wird in test_auth.py geprüft
     for m in [m for m in sys.modules if m.startswith("darkroom")]:
         del sys.modules[m]
     img = np.zeros((300, 450, 3), np.uint8)

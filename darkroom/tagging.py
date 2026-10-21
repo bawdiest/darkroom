@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import json
 import re
+import contextvars
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import ai, catalog
+from .workspace import PerWorkspace
 
 # Wörter, aus denen das Modell auswählen soll. Eigene Wörter in data/tag_vocabulary.txt (ein Tag pro Zeile) ergänzen sie.
 VOCABULARY = [
@@ -121,7 +123,7 @@ class TagJob:
                               gestartet=time.time(), beendet=None)
             if not todo:
                 return True
-            self.thread = threading.Thread(target=self._run, args=(provider, todo), daemon=True, name="ai-tagging")
+            self.thread = threading.Thread(target=contextvars.copy_context().run, args=(self._run, provider, todo), daemon=True, name="ai-tagging")  # mit dem Arbeitsbereich des Benutzers
             self.thread.start()
             return True
 
@@ -154,4 +156,4 @@ class TagJob:
             self.state.update(running=False, aktuell="", beendet=time.time())
 
 
-JOB = TagJob()
+JOB = PerWorkspace(TagJob)  # ein Job pro Benutzer

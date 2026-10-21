@@ -152,6 +152,25 @@
   body.mobile #selActions, body.mobile #newRoll, body.mobile #newCat, body.mobile #rollTools, body.mobile #catTools,
   body.mobile #iMoveRoll, body.mobile #iAddCat, body.mobile #iTagIn, body.mobile #linfo .actions, body.mobile #linfo .tg b { display:none !important; }
   body.mobile #chips, body.mobile #ftagBox { display:none !important; }
+  /* Anmeldung und Konto */
+  #auth { position:fixed; inset:0; z-index:100; background:var(--bg); display:none; align-items:center; justify-content:center; padding:16px; }
+  #auth.open { display:flex; }
+  #authBox { width:min(100%, 360px); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:12px; }
+  #authBox h2 { margin:0; font-size:18px; letter-spacing:.04em; } #authBox p { margin:0; color:var(--mute); font-size:13px; line-height:1.5; }
+  #authBox input, #authBox button { font-size:16px; padding:11px 12px; width:100%; }
+  #authBox button.go, #userDlg button.go { background:var(--acc); color:#1b1b1d; border-color:var(--acc); font-weight:600; }
+  #authErr, #uMsg { color:#ff7b72; font-size:13px; min-height:18px; white-space:pre-wrap; } #uMsg.ok { color:#7ee787; }
+  #userBtn { white-space:nowrap; }
+  #userDlg { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:0; width:min(94vw, 560px); max-height:88vh; }
+  #userDlg::backdrop { background:rgba(0,0,0,.6); }
+  #userDlg .in { padding:18px; display:flex; flex-direction:column; gap:14px; overflow:auto; max-height:88vh; }
+  #userDlg h3 { margin:0 0 6px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); font-weight:600; }
+  #userDlg .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } #userDlg .row input { flex:1 1 140px; min-width:0; }
+  #uList { display:flex; flex-direction:column; gap:6px; } #uList .u { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:6px 8px; border:1px solid var(--line); border-radius:8px; }
+  #uList .u b { flex:1 1 120px; font-weight:600; } #uList .u small { color:var(--mute); }
+  #uList .u label { color:var(--mute); font-size:12px; display:flex; gap:4px; align-items:center; }
+  body.mobile #userName, body.mobile #uAdmin { display:none; }
+  body.mobile #userDlg input, body.mobile #userDlg button { font-size:16px; padding:10px 12px; }
   #lshare, #selShare, #xsheet { display:none; }
   body.mobile #lshare { display:inline-block; }
   body.mobile #selShare.show { display:inline-block; background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
@@ -191,6 +210,7 @@
     <button id="ai" title="Die angezeigten Fotos per KI automatisch mit Tags versehen (Portrait, Landschaft, Auto …). Klick während des Laufs stoppt den Job.">KI-Tags</button>
     <button id="exportXmp">XMP exportieren</button>
   </span>
+  <button id="userBtn" title="Konto" style="display:none">👤 <span id="userName"></span></button>
 </header>
 <div id="backdrop"></div>
 <main>
@@ -287,6 +307,30 @@
     </div>
   </section>
 </main>
+<div id="auth"><form id="authBox" autocomplete="on">
+  <h2>DARKROOM</h2>
+  <p id="authHint"></p>
+  <input id="aName" name="username" autocomplete="username" placeholder="Benutzername" autocapitalize="none" spellcheck="false" required>
+  <input id="aPass" name="password" type="password" autocomplete="current-password" placeholder="Passwort" required>
+  <input id="aPass2" type="password" autocomplete="new-password" placeholder="Passwort wiederholen" style="display:none">
+  <div id="authErr"></div>
+  <button id="aGo" class="go" type="submit">Anmelden</button>
+</form></div>
+<dialog id="userDlg"><div class="in">
+  <div><h3>Konto</h3><div id="uWho"></div></div>
+  <div><h3>Passwort ändern</h3><div class="row">
+    <input id="uOld" type="password" autocomplete="current-password" placeholder="Altes Passwort">
+    <input id="uNew" type="password" autocomplete="new-password" placeholder="Neues Passwort (mind. 8 Zeichen)">
+    <button id="uPw">Ändern</button></div></div>
+  <div id="uAdmin" style="display:none"><h3>Benutzer</h3><div id="uList"></div>
+    <div class="row" style="margin-top:10px"><input id="nName" placeholder="Neuer Benutzername" autocapitalize="none" autocomplete="off">
+      <input id="nPass" type="password" placeholder="Passwort (mind. 8 Zeichen)" autocomplete="new-password">
+      <label style="color:var(--mute);font-size:12px"><input id="nAdmin" type="checkbox" style="flex:none"> Admin</label>
+      <button id="nAdd">Anlegen</button></div>
+    <p style="color:var(--mute);font-size:12px;margin:8px 0 0">Jeder Benutzer hat eine eigene Bibliothek und eigene Daten (Parameter, Tags, Kataloge, Vorschauen). Wird ein Konto gelöscht, bleiben seine Dateien auf dem Laufwerk.</p></div>
+  <div id="uMsg"></div>
+  <div class="row"><button id="uOut">Abmelden</button><span class="spacer"></span><button id="uClose" class="go">Schliessen</button></div>
+</div></dialog>
 <div id="xsheet"><div id="xbox">
   <h3 id="xtitle">Teilen</h3>
   <select id="xprof"></select>
@@ -310,6 +354,7 @@ let current = null, timer = null, seq = 0;
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
+  if (r.status === 401 && !url.startsWith('/api/auth/')) { if (!$('#auth').classList.contains('open')) showAuth(); throw new Error('Nicht angemeldet'); }
   if (!r.ok) {
     const j = await r.json().catch(() => null);
     let d = j && j.detail; if (d && typeof d !== 'string') d = JSON.stringify(d);
@@ -785,6 +830,86 @@ document.addEventListener('keydown', e => {
   else if (k === 'o' || k === 'O') $('#lorig').click();
   else if (k === 'v' || k === 'V') makeDuplicate().catch(err => $('#lstat').textContent = err.message);
   else if (k === 'Delete') deleteCurrentDuplicate().catch(err => $('#lstat').textContent = err.message);
+});
+
+// ---------- Anmeldung, Konto, Benutzerverwaltung ----------
+let me = null, setupMode = false;
+function showAuth(setup = false) {
+  setupMode = setup;
+  $('#authHint').textContent = setup ? 'Erster Start: Lege den Admin-Zugang an. Die bisherigen Fotos und Daten gehören diesem Benutzer.' : 'Bitte anmelden.';
+  $('#aPass2').style.display = setup ? '' : 'none'; $('#aPass2').required = setup;
+  $('#aPass').autocomplete = setup ? 'new-password' : 'current-password';
+  $('#aGo').textContent = setup ? 'Admin anlegen' : 'Anmelden';
+  $('#auth').classList.add('open');
+  if (!$('#aName').value) $('#aName').focus();
+}
+$('#authBox').addEventListener('submit', async e => {
+  e.preventDefault(); $('#authErr').textContent = '';
+  if (setupMode && $('#aPass').value !== $('#aPass2').value) { $('#authErr').textContent = 'Die beiden Passwörter sind verschieden.'; return; }
+  $('#aGo').disabled = true;
+  try {
+    const r = await fetch(setupMode ? '/api/auth/setup' : '/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:$('#aName').value.trim(), password:$('#aPass').value})});
+    if (!r.ok) { const j = await r.json().catch(() => null); throw new Error((j && j.detail) || `Fehler (HTTP ${r.status})`); }
+    location.reload();
+  } catch (err) { $('#authErr').textContent = err.message; $('#aGo').disabled = false; }
+});
+(async () => {
+  try {
+    const st = await (await fetch('/api/auth/state')).json();
+    if (!st.auth) return;  // Anmeldung abgeschaltet (DARKROOM_AUTH=off)
+    if (!st.user) { showAuth(st.setup); return; }
+    me = st.user; $('#userName').textContent = me.name; $('#userBtn').style.display = '';
+  } catch (e) {}
+})();
+const uMsg = (t, ok) => { $('#uMsg').textContent = t || ''; $('#uMsg').classList.toggle('ok', !!ok); };
+async function authPost(url, body, method = 'POST') {
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `Fehler (HTTP ${r.status})`);
+  return j;
+}
+async function drawUsers() {
+  const list = await (await api('/api/users')).json();
+  $('#uList').innerHTML = list.map(u => `<div class="u" data-id="${u.id}" data-name="${H(u.name)}"><b>${H(u.name)}</b>${u.owner ? '<small title="Hat die bisherige Bibliothek">Besitzer</small>' : ''}
+    <label><input type="checkbox" data-act="admin" ${u.is_admin ? 'checked' : ''}> Admin</label>
+    <button data-act="pw">Passwort</button>${u.id === me.id ? '' : '<button data-act="del">Löschen</button>'}</div>`).join('');
+}
+$('#userBtn').onclick = async () => {
+  if (!me) return;
+  $('#uWho').textContent = `${me.name}${me.is_admin ? ' (Admin)' : ''}`; uMsg(''); ['#uOld', '#uNew'].forEach(s => $(s).value = '');
+  $('#uAdmin').style.display = me.is_admin ? '' : 'none';
+  $('#userDlg').showModal();
+  if (me.is_admin) drawUsers().catch(e => uMsg(e.message));
+};
+$('#uClose').onclick = () => $('#userDlg').close();
+$('#uOut').onclick = async () => { try { await authPost('/api/auth/logout'); } catch (e) {} location.reload(); };
+$('#uPw').onclick = async () => {
+  try { await authPost('/api/auth/password', {old:$('#uOld').value, new:$('#uNew').value}); $('#uOld').value = $('#uNew').value = ''; uMsg('Passwort geändert.', true); }
+  catch (e) { uMsg(e.message); }
+};
+$('#nAdd').onclick = async () => {
+  try { await authPost('/api/users', {name:$('#nName').value.trim(), password:$('#nPass').value, is_admin:$('#nAdmin').checked});
+    uMsg(`Benutzer «${$('#nName').value.trim()}» angelegt.`, true); $('#nName').value = $('#nPass').value = ''; $('#nAdmin').checked = false; await drawUsers(); }
+  catch (e) { uMsg(e.message); }
+};
+$('#uList').addEventListener('click', async e => {
+  const b = e.target.closest('button'), row = e.target.closest('.u'); if (!b || !row) return;
+  const id = row.dataset.id, name = row.dataset.name;
+  try {
+    if (b.dataset.act === 'pw') {
+      const pw = prompt(`Neues Passwort für «${name}» (mind. 8 Zeichen):`); if (!pw) return;
+      await authPost(`/api/users/${id}/password`, {new:pw}); uMsg(`Passwort von «${name}» geändert; seine Sitzungen sind beendet.`, true);
+    } else if (b.dataset.act === 'del') {
+      if (!confirm(`Benutzer «${name}» löschen?\nSein Zugang verschwindet. Fotos und Daten bleiben auf dem Laufwerk.`)) return;
+      await authPost(`/api/users/${id}`, null, 'DELETE'); uMsg(`«${name}» gelöscht.`, true); await drawUsers();
+    }
+  } catch (err) { uMsg(err.message); }
+});
+$('#uList').addEventListener('change', async e => {
+  if (e.target.dataset.act !== 'admin') return;
+  try { await authPost(`/api/users/${e.target.closest('.u').dataset.id}/admin`, {is_admin:e.target.checked}, 'PUT'); uMsg('Gespeichert.', true); }
+  catch (err) { e.target.checked = !e.target.checked; uMsg(err.message); }
 });
 
 // ---------- Teilen / Export für das Handy (z. B. WhatsApp) ----------
