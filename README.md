@@ -23,6 +23,12 @@ docker compose up --build   # http://localhost:8000  ->  "Bibliothek scannen"
 Die App hat eine **Anmeldung mit mehreren Benutzern** (Abschnitt «Mehrere Benutzer»). Betreibe sie trotzdem nur über https (Reverse Proxy) oder im eigenen Netz/VPN,
 denn sie kann Dateien in der Foto-Bibliothek schreiben und den KI-Schlüssel nutzen.
 
+**Reverse Proxy und Zeitlimits:** «Bibliothek scannen», «Angleichen» und «KI-Tags» laufen als Hintergrundjobs mit Fortschritt am Knopf
+(auch nach einem Neuladen der Seite sichtbar); die Anfrage kehrt sofort zurück. Einzelne Anfragen können trotzdem länger dauern, etwa
+der Export eines grossen RAW oder «Ordnen» von vielen Dateien. Bekommst du dabei ein **504**, ist das Zeitlimit des Proxys erreicht (nginx:
+60 s) und nicht die App: der Server arbeitet weiter. Setze für diese Adresse `proxy_read_timeout 300s;` (Nginx Proxy Manager: «Advanced»).
+Dateien, die nicht gelesen werden konnten («File format not recognized» im Log), nennt der Scan am Ende mit Namen.
+
 Ohne Docker (z. B. Bazzite/Fedora, bubblewrap ist dort meist schon da):
 
 ```bash

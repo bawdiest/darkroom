@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import ai, authapi, automatch, catalog, desktopapi, mode, policy, sandbox, syncapi, tagging
+from . import ai, authapi, automatch, catalog, desktopapi, mode, policy, sandbox, scanjob, syncapi, tagging
 from .workspace import current as _ws
 from .checks import ScriptError
 from .output import encode, load_profiles
@@ -149,7 +149,8 @@ class MatchBody(BaseModel):
 @app.post("/api/jobs/match")
 def match_start(body: MatchBody):
     """Startet den Hintergrundjob für die übergebenen Fotos (aktuelle Auswahl); ohne ids für alle noch nicht geprüften."""
-    return {"gestartet": automatch.JOB.start(body.ids), **automatch.JOB.state}
+    started = automatch.JOB.start(body.ids)
+    return {**automatch.JOB.state, "gestartet": started}  # «gestartet» = ob dieser Aufruf den Job gestartet hat (nicht der Zeitstempel im Stand)
 
 
 @app.get("/api/jobs/match")
@@ -172,7 +173,7 @@ class TagBody(BaseModel):
 def tag_start(body: TagBody):
     """Startet das KI-Tagging für die übergebenen Fotos (aktuelle Auswahl). Schickt Vorschaubilder an den KI-Anbieter."""
     started = tagging.JOB.start(body.ids, body.redo)
-    return {"gestartet": started, **tagging.JOB.state}
+    return {**tagging.JOB.state, "gestartet": started}
 
 
 @app.get("/api/jobs/tag")
@@ -202,6 +203,31 @@ def scan(b: ScanBody | None = None):
         return catalog.scan(roll=b.roll if b else None)
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+@app.post("/api/jobs/scan")
+def scan_start(b: ScanBody | None = None):
+    """Startet «Bibliothek scannen» im Hintergrund (kehrt sofort zurück; Stand und Ergebnis über GET). Eine einzelne Anfrage lief bei
+    grossen Bibliotheken in das Zeitlimit des Reverse Proxys («504»)."""
+    roll = (b.roll if b else None) or None
+    if roll:
+        try:
+            catalog._cat_name(roll)  # Namen vorab prüfen, nicht erst nach dem Einlesen
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+    started = scanjob.JOB.start(roll)
+    return {**scanjob.JOB.state, "gestartet": started}
+
+
+@app.get("/api/jobs/scan")
+def scan_state():
+    return scanjob.JOB.state
+
+
+@app.delete("/api/jobs/scan")
+def scan_stop():
+    scanjob.JOB.stop()
+    return scanjob.JOB.state
 
 
 class OrganizeBody(BaseModel):

@@ -659,17 +659,38 @@ $('#clr').onclick = () => { $('#fq').value = ''; toggleClear(); loadGrid(); draw
 $('#help').onclick = e => { e.stopPropagation(); const h = $('#helpPanel'); h.style.display = h.style.display === 'block' ? 'none' : 'block'; };
 document.addEventListener('click', e => { if (!e.target.closest('#helpPanel')) $('#helpPanel').style.display = 'none'; });
 document.addEventListener('keydown', e => { if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('#lighttable').style.display !== 'none') { e.preventDefault(); $('#fq').focus(); } });
+// ---------- Hintergrundjob: Bibliothek scannen (läuft im Server weiter, auch wenn der Browser oder ein Proxy die Verbindung kappt) ----------
+let scanTimer = null, scanWasRunning = false;
+function showScanResult(st) {
+  if (st.meldung) { alert('Scan fehlgeschlagen: ' + st.meldung); return; }
+  const s = st.ergebnis || {}, f = s.fehler || [];
+  alert((s.abgebrochen ? 'Abgebrochen (das bisher Eingelesene bleibt).\n' : '') + (s.filmrolle ? `Filmrolle «${s.filmrolle}»\n` : '') +
+    `Neu: ${s.neu}\nXMP importiert: ${s.xmp_importiert}\nBereits vorhanden: ${s.vorhanden}` +
+    (s.duplikate_wiederhergestellt ? `\nDuplikate wiederhergestellt: ${s.duplikate_wiederhergestellt}` : '') +
+    (f.length ? `\n\n${f.length} Dateien konnten nicht gelesen werden:\n${f.slice(0, 12).join('\n')}${f.length > 12 ? `\n… und ${f.length - 12} weitere` : ''}` : ''));
+}
+async function pollScan() {
+  clearTimeout(scanTimer);
+  try {
+    const st = await (await api('/api/jobs/scan')).json();
+    $('#scan').textContent = st.running ? `Scanne ${st.done}/${st.total || '…'} ■` : 'Bibliothek scannen';
+    $('#scan').classList.toggle('on', st.running);
+    $('#scan').title = st.running ? `Läuft: ${st.aktuell}. Klick = stoppen.` : 'Neue Fotos in der Bibliothek einlesen';
+    if (st.running) { scanWasRunning = true; scanTimer = setTimeout(pollScan, 1500); if (st.done && st.done % 100 === 0) loadFacets().catch(() => {}); }
+    else if (scanWasRunning) { scanWasRunning = false; await loadFacets(); await loadGrid(); showScanResult(st); }
+  } catch (e) {}
+}
 $('#scan').onclick = async () => {
+  const cur = await (await api('/api/jobs/scan')).json();
+  if (cur.running) { await api('/api/jobs/scan', {method:'DELETE'}); pollScan(); return; }
   const now = new Date(), pad = n => String(n).padStart(2, '0');
   const dflt = `Import ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const roll = prompt('Neu importierte Fotos kommen in die Filmrolle:\n(leer lassen = Vorschlag; Abbrechen = nicht scannen)', dflt);
   if (roll === null) return;
-  $('#scan').textContent = 'Scanne…';
-  try { const s = await (await post('/api/scan', {roll: roll.trim() || dflt}));
-    alert((s.filmrolle ? `Filmrolle «${s.filmrolle}»\n` : '') + `Neu: ${s.neu}\nXMP importiert: ${s.xmp_importiert}\nBereits vorhanden: ${s.vorhanden}` + (s.duplikate_wiederhergestellt ? `\nDuplikate wiederhergestellt: ${s.duplikate_wiederhergestellt}` : '') + (s.fehler.length ? `\nFehler:\n${s.fehler.join('\n')}` : '')); }
-  catch (e) { alert(e.message); }
-  $('#scan').textContent = 'Bibliothek scannen'; await loadFacets(); await loadGrid();
+  try { await post('/api/jobs/scan', {roll: roll.trim() || dflt}); } catch (e) { alert(e.message); return; }
+  scanWasRunning = true; pollScan();
 };
+pollScan();
 // ---------- Hintergrundjob: Angleichen an das Kamera-Vorschaubild ----------
 let matchTimer = null;
 function matchLabel(st) {

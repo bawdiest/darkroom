@@ -228,25 +228,42 @@ def index_file(con: sqlite3.Connection, path: Path, import_xmp: bool = True) -> 
     return {"rel": rel, "pid": pid, "neu": True, "xmp": used_xmp}
 
 
-def scan(import_xmp: bool = True, roll: str | None = None) -> dict:
-    """Durchsucht LIBRARY, indiziert neue Fotos, liest XMPs ein (nur wenn noch keine YAML existiert)."""
+def _scan_error(rel: str, e: Exception) -> str:
+    """Verständliche Meldung statt der rohen LibRaw-Meldung («File format not recognized»)."""
+    raw = f"{type(e).__name__}: {e}".strip()
+    if "LibRaw" in type(e).__name__ or "nsupported file format" in str(e) or "not recognized" in str(e):
+        return (f"{rel}: Dateiformat nicht erkannt (beschädigt, keine RAW-Datei, unvollständig synchronisiert oder eine zu neue Kamera: "
+                f"dann hilft ein Update von rawpy/LibRaw) [{raw}]")
+    return f"{rel}: {e}"
+
+
+def scan(import_xmp: bool = True, roll: str | None = None, progress=None, stop=None) -> dict:
+    """Durchsucht LIBRARY, indiziert neue Fotos, liest XMPs ein (nur wenn noch keine YAML existiert).
+    progress(done, total, rel) wird nach jeder Datei gerufen; ist das Ereignis `stop` gesetzt, endet der Lauf sauber (stats['abgebrochen'])."""
     stats = {"neu": 0, "xmp_importiert": 0, "vorhanden": 0, "fehler": []}
     imported: list[str] = []
     con = db()
-    for path in sorted(LIBRARY.rglob("*")):
-        if path.suffix.lower() not in RAW_EXT | IMG_EXT or path.name.startswith(".") or _in_data(path):
-            continue  # (liegt der Datenordner in der Bibliothek, wird er nicht als Fotoquelle gescannt)
+    files = [p for p in sorted(LIBRARY.rglob("*"))
+             if p.suffix.lower() in RAW_EXT | IMG_EXT and not p.name.startswith(".") and not _in_data(p)]  # (der Datenordner in der Bibliothek zählt nicht)
+    for i, path in enumerate(files, 1):
+        if stop is not None and stop.is_set():
+            stats["abgebrochen"] = True
+            break
         rel = path.relative_to(LIBRARY).as_posix()
         try:
             r = index_file(con, path, import_xmp)
             if not r["neu"]:
                 stats["vorhanden"] += 1
-                continue
-            stats["xmp_importiert"] += r["xmp"]
-            stats["neu"] += 1
-            imported.append(rel)
+            else:
+                stats["xmp_importiert"] += r["xmp"]
+                stats["neu"] += 1
+                imported.append(rel)
         except Exception as e:  # ein defektes Foto soll den Scan nicht stoppen
-            stats["fehler"].append(f"{rel}: {e}")
+            stats["fehler"].append(_scan_error(rel, e))
+        if progress:
+            progress(i, len(files), rel)
+        if i % 50 == 0:
+            con.commit()  # bei einem Abbruch (Stopp, Neustart) bleibt das bisher Eingelesene erhalten
     con.commit()
     stats["duplikate_wiederhergestellt"] = restore_duplicates()
     if imported:  # alle neu importierten Fotos kommen in eine gemeinsame Filmrolle
