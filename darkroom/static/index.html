@@ -135,7 +135,7 @@
   body.mobile #selbar { padding:8px 8px 0; } body.mobile #selbar button, body.mobile #selbar select { padding:8px 10px; font-size:13px; }
   body.mobile #chips { padding:8px 8px 0; flex-wrap:nowrap; overflow-x:auto; } body.mobile .chip { flex:none; padding:6px 12px; }
   body.mobile #loupe { flex-direction:column; }
-  body.mobile #lstrip, body.mobile .arrow, body.mobile #iDev, body.mobile #lback span.long { display:none; }
+  body.mobile #lstrip, body.mobile .arrow, body.mobile #iDev { display:none; }
   body.mobile #ltop { padding:8px 10px; padding-top:calc(8px + env(safe-area-inset-top)); gap:8px; } body.mobile #ltop button { padding:8px 12px; }
   body.mobile #ltop button, body.mobile #lpos { white-space:nowrap; flex:none; } body.mobile #ltop { gap:6px; }
   body.mobile #ltitle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -235,7 +235,6 @@
   <section id="loupe">
     <div id="lmain">
       <div id="ltop">
-        <button id="lback" title="Esc">← Raster</button>
         <span id="ltitle"></span><span class="spacer"></span><span id="lpos"></span>
         <button id="infoBtn" title="Angaben ein-/ausblenden">ⓘ</button>
         <button id="lshare" title="Teilen / Exportieren">⇪ Teilen</button>
@@ -770,7 +769,6 @@ async function backToGrid() {
   show('light'); await loadGrid(); if (dirty) { dirty = false; pollThumbs(); }
   const c = current && $(`.card[data-id="${current.id}"]`); if (c) c.scrollIntoView({block:'nearest'});
 }
-$('#lback').onclick = backToGrid;
 $('#lprev').onclick = () => step(-1); $('#lnext').onclick = () => step(1);
 $('#lorig').onclick = () => { showOrig = !showOrig; openLoupe(list[lidx].id); };
 document.addEventListener('keydown', e => {
@@ -898,7 +896,7 @@ function show(view) {
   $('#tabLoupe').classList.toggle('on', view === 'loupe');
   $('#tabDark').classList.toggle('on', view === 'dark');
 }
-$('#tabLight').onclick = async () => { show('light'); await loadGrid(); if (dirty) { dirty = false; pollThumbs(); } };
+$('#tabLight').onclick = backToGrid;  // zeigt das Raster und springt zum zuletzt geöffneten Foto
 let dirty = false;
 let darkId = null;
 $('#tabDark').onclick = () => { if (!current) return; current.id === darkId ? show('dark') : openDark(current); };
