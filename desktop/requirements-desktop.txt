@@ -1,0 +1,6 @@
+# Zusätzlich zu requirements.txt, nur für die Desktop-App und ihren Build.
+# Windows nutzt WebView2 (Edge, auf Windows 10/11 vorhanden), macOS das eingebaute WebKit.
+# Unter Linux liefert Qt das Fenster mit (selbständig, ohne System-WebKit; grösser, dafür überall gleich).
+pywebview>=5.3
+pywebview[qt]>=5.3; sys_platform == "linux"
+pyinstaller>=6.6

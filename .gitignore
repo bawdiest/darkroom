@@ -11,3 +11,9 @@ venv/
 auth.db
 **/auth.db
 data/users/
+
+# Desktop-Build
+dist/
+build/
+.venv-build/
+*.spec.bak

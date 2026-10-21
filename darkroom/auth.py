@@ -14,11 +14,12 @@ import sqlite3
 import threading
 import time
 
-from . import workspace
+from . import mode, workspace
 from .workspace import Workspace
 
 COOKIE = "darkroom_session"
 SESSION_DAYS = 30
+TOKEN_DAYS = 365  # Zugangs-Token der Desktop-App (Bearer)
 MIN_PASSWORD = 8
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,31}$")
 _lock = threading.Lock()
@@ -29,6 +30,8 @@ class AuthError(ValueError):
 
 
 def enabled() -> bool:
+    if mode.desktop():  # Desktop-App: eine Person, kein Konto
+        return False
     return os.environ.get("DARKROOM_AUTH", "on").strip().lower() not in ("off", "0", "false", "no")
 
 
@@ -161,12 +164,12 @@ def login(name: str, password: str, client: str = "") -> dict:
     return _public(row) | {"token": new_session(row["id"])}
 
 
-def new_session(uid: int) -> str:
+def new_session(uid: int, days: int = SESSION_DAYS) -> str:
     token = secrets.token_urlsafe(32)
     with _lock, _db() as c:
         c.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
         c.execute("INSERT INTO sessions(token, user_id, expires) VALUES(?,?,?)",
-                  (_digest(token), uid, time.time() + SESSION_DAYS * 86400))
+                  (_digest(token), uid, time.time() + days * 86400))
     return token
 
 

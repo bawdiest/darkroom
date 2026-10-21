@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS photos(
   id TEXT PRIMARY KEY, path TEXT UNIQUE, taken TEXT, camera TEXT, lens TEXT,
   iso INTEGER, focal REAL, rating INTEGER DEFAULT 0, tags TEXT DEFAULT '[]'
 );
+-- Sync (siehe syncstate.py): Basis des letzten Abgleichs (Desktop) und Stand je Foto auf dem Server
+CREATE TABLE IF NOT EXISTS sync_base(key TEXT PRIMARY KEY, dev TEXT, org TEXT, rev INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS sync_server(key TEXT PRIMARY KEY, h_dev TEXT, h_org TEXT, rev INTEGER NOT NULL, deleted INTEGER DEFAULT 0);
 """
 
 
@@ -47,7 +50,8 @@ def db() -> sqlite3.Connection:
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
     have = {r[1] for r in c.execute("PRAGMA table_info(photos)")}
-    for col, ddl in (("ai_tags", "TEXT DEFAULT '[]'"), ("source", "TEXT"), ("version", "INTEGER DEFAULT 0")):
+    for col, ddl in (("ai_tags", "TEXT DEFAULT '[]'"), ("source", "TEXT"), ("version", "INTEGER DEFAULT 0"),
+                     ("fkey", "TEXT"), ("fsig", "TEXT"), ("remote", "INTEGER DEFAULT 0")):  # fkey: Inhalts-Hash der Datei (Sync); remote: Original liegt nur auf dem Server
         if col not in have:  # Migration älterer Indizes
             c.execute(f"ALTER TABLE photos ADD COLUMN {col} {ddl}")
             c.commit()
@@ -195,6 +199,35 @@ def _in_data(path: Path) -> bool:
     return path.relative_to(ws.DATA).parts[0] in {"cache", "params", "scripts", "ai_tags", "presets", "script_presets", "exports", "users"}
 
 
+def index_file(con: sqlite3.Connection, path: Path, import_xmp: bool = True) -> dict:
+    """Nimmt eine Bilddatei der Bibliothek in den Index auf (YAML anlegen oder einlesen, Vorschaubild, Aufnahmedaten).
+    Gibt {'rel', 'pid', 'neu', 'xmp'} zurück; 'neu' ist False, wenn die Datei schon im Index steht. Der Aufrufer committet."""
+    rel = path.relative_to(LIBRARY).as_posix()
+    pid = photo_id(rel)
+    if con.execute("SELECT 1 FROM photos WHERE id=?", (pid,)).fetchone():
+        return {"rel": rel, "pid": pid, "neu": False, "xmp": 0}
+    pf = params_file(rel)
+    params, used_xmp = Params(), 0
+    xmp = next((x for x in (path.with_name(path.name + ".xmp"), path.with_suffix(".xmp")) if x.exists()), None)
+    if not pf.exists():
+        if import_xmp and xmp:
+            params, _ = read_xmp(xmp)
+            used_xmp = 1
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(dump_params(params), encoding="utf-8")
+    else:
+        params = load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR)
+    ex = read_exif(path)
+    make_thumb(path, pid, params)
+    ai = (read_ai_tags(rel) or {}).get("tags", [])  # vorhandene KI-Tags (z. B. aus dem Git-Repo) übernehmen
+    con.execute(
+        "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags,ai_tags) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (pid, rel, ex["taken"], ex["camera"], ex["lens"], ex["iso"], ex["focal"],
+         params.rating, json.dumps(params.tags, ensure_ascii=False), json.dumps(ai, ensure_ascii=False)),
+    )
+    return {"rel": rel, "pid": pid, "neu": True, "xmp": used_xmp}
+
+
 def scan(import_xmp: bool = True, roll: str | None = None) -> dict:
     """Durchsucht LIBRARY, indiziert neue Fotos, liest XMPs ein (nur wenn noch keine YAML existiert)."""
     stats = {"neu": 0, "xmp_importiert": 0, "vorhanden": 0, "fehler": []}
@@ -204,31 +237,12 @@ def scan(import_xmp: bool = True, roll: str | None = None) -> dict:
         if path.suffix.lower() not in RAW_EXT | IMG_EXT or path.name.startswith(".") or _in_data(path):
             continue  # (liegt der Datenordner in der Bibliothek, wird er nicht als Fotoquelle gescannt)
         rel = path.relative_to(LIBRARY).as_posix()
-        pid = photo_id(rel)
-        if con.execute("SELECT 1 FROM photos WHERE id=?", (pid,)).fetchone():
-            stats["vorhanden"] += 1
-            continue
         try:
-            pf = params_file(rel)
-            params = Params()
-            xmp_candidates = [path.with_name(path.name + ".xmp"), path.with_suffix(".xmp")]
-            xmp = next((x for x in xmp_candidates if x.exists()), None)
-            if not pf.exists():
-                if import_xmp and xmp:
-                    params, rep = read_xmp(xmp)
-                    stats["xmp_importiert"] += 1
-                pf.parent.mkdir(parents=True, exist_ok=True)
-                pf.write_text(dump_params(params), encoding="utf-8")
-            else:
-                params = load_params(pf.read_text(encoding="utf-8"), PRESETS_DIR)
-            ex = read_exif(path)
-            make_thumb(path, pid, params)
-            ai = (read_ai_tags(rel) or {}).get("tags", [])  # vorhandene KI-Tags (z. B. aus dem Git-Repo) übernehmen
-            con.execute(
-                "INSERT INTO photos(id,path,taken,camera,lens,iso,focal,rating,tags,ai_tags) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (pid, rel, ex["taken"], ex["camera"], ex["lens"], ex["iso"], ex["focal"],
-                 params.rating, json.dumps(params.tags, ensure_ascii=False), json.dumps(ai, ensure_ascii=False)),
-            )
+            r = index_file(con, path, import_xmp)
+            if not r["neu"]:
+                stats["vorhanden"] += 1
+                continue
+            stats["xmp_importiert"] += r["xmp"]
             stats["neu"] += 1
             imported.append(rel)
         except Exception as e:  # ein defektes Foto soll den Scan nicht stoppen
@@ -763,7 +777,7 @@ def photo_info(pid: str) -> dict:
     st = edit_state(rel)
     return {
         "id": pid, "path": rel, "file": Path(src).name, "roll": read_roll_of(rel), "date": date_of(row), "is_duplicate": is_duplicate(row),
-        "version": row["version"] or 0, "size": raw.stat().st_size if raw.exists() else None, "exif": ex,
+        "version": row["version"] or 0, "size": raw.stat().st_size if raw.exists() else None, "exif": ex, "remote": bool(_get(row, "remote")),
         "rating": row["rating"], "tags": json.loads(row["tags"]), "ai_tags": json.loads(row["ai_tags"] or "[]"),
         "catalogs": sorted(n for n, ps in read_catalogs().items() if rel in ps), "versions": siblings,
         "changed": changed, **st,

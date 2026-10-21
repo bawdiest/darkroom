@@ -127,6 +127,66 @@ Duplikate folgen der Rolle ihres Originals. Die Zuordnung steht in `data/rolls.y
 
 **Duplikate** (virtuelle Kopien) haben eigene Parameter, ein eigenes Script, eigene Tags und Bewertung, teilen sich aber die Bilddatei (es wird nichts kopiert). Sie sind überall blau gestrichelt und mit «⧉ Duplikat N» markiert und stehen im Raster direkt hinter ihrem Original. Anlegen: Galerie (`V` oder Knopf), oder im Raster mehrere auswählen und «Duplizieren». Ein Duplikat startet mit dem aktuellen Stand der Vorlage und bleibt in deren Katalogen. Löschen lassen sich nur Duplikate, nie Originale. Gespeichert werden sie als `data/params/<Original>~dN.yaml` (plus Script und KI-Tags unter demselben Namen); nach einem Neuaufbau des Index stellt «Bibliothek scannen» sie daraus wieder her. Beim XMP-Export werden Duplikate übersprungen (XMP kennt pro Datei nur eine Version); der Export aus der Dunkelkammer heisst `<Name>_dN.jpg`.
 
+## Desktop-App (Windows, macOS, Linux)
+
+Eigenständige App für Notebook und PC: Fotos importieren, bewerten, ordnen und entwickeln **ohne Internet**; sobald der Server
+erreichbar ist, gleicht sie in beide Richtungen ab, **inklusive der RAW-Dateien**. Dieselbe Oberfläche wie im Browser, die Fotos
+liegen lokal (Standard `Bilder/Darkroom`, änderbar über ⚙), Einstellungen und Daten im Benutzerprofil
+(`%APPDATA%\Darkroom`, `~/Library/Application Support/Darkroom`, `~/.local/share/Darkroom`).
+
+**Was offline geht:** importieren (Knopf «Importieren…» kopiert von Speicherkarte oder Ordner nach `JJJJ/MM/TT`, XMPs werden
+mitgenommen, bereits Kopiertes wird übersprungen), Bibliothek scannen, bewerten, taggen, Filmrollen, Kataloge, Duplikate, Entwicklung
+über die Parameter, Angleichen, Export. **Scripts laufen lokal nie:** man kann sie schreiben und speichern, angewendet werden sie
+erst auf dem Server (lokal zeigen Vorschau und Export nur die Parameter, mit Hinweis). Die KI-Funktionen gibt es nur am Server.
+
+**Mit dem Server verbinden:** ☁-Knopf oder ⚙ → Adresse (`https://…`), Benutzername, Passwort. Die App speichert nur einen
+Zugangs-Token (`sync.json` im Datenordner), nie das Passwort; der Benutzer ist ein normales Konto aus «Mehrere Benutzer».
+Die App zeigt **Offline / n ausstehend / Synchronisiert**, prüft jede Minute die Erreichbarkeit und gleicht automatisch ab, wenn lokal
+etwas ansteht (abschaltbar). Ein Klick auf den ☁-Knopf startet den Abgleich von Hand, während des Laufs stoppt er ihn.
+
+**Was abgeglichen wird:** neue RAW-Dateien (in Teilen von 4 MB, ein abgebrochener Upload setzt später dort fort, Prüfsumme beim
+Empfang), Parameter-YAML mit Bewertung und Tags, Scripts, KI-Tags, Filmrollen, Kataloge, Duplikate (auch das Löschen). Ein Foto
+wird über den Hash seines Inhalts erkannt, nicht über den Pfad; Umbenennen und «Ordnen» stören den Abgleich also nicht.
+Fotos, die nur auf dem Server liegen (z. B. vom zweiten Gerät), erscheinen mit Vorschau und «☁ Server»-Marke; **«Original laden»**
+im Info-Blatt der Galerie holt die RAW-Datei (fortsetzbar, mit Prüfsumme). Nach dem Abgleich zeigt eine lokale Vorschau
+von Fotos mit Script den Look, den der Server mit dem Script gerechnet hat.
+
+**Konflikte:** Wurde dasselbe Foto hier und auf dem Server verschieden entwickelt (Parameter, Script, Bewertung, Tags), wird
+nichts überschrieben. Das ⚠ oben nennt die Fotos; der Dialog zeigt beide Fassungen (nur die abweichenden Zeilen) und fragt:
+**Meine behalten** (überschreibt den Server), **Server übernehmen** (deine Änderung geht verloren) oder **Beide behalten** (deine
+Fassung wird ein Duplikat, das Original bekommt die Server-Fassung). Filmrolle und Kataloge fügt die App selbst zusammen (Kataloge
+als Vereinigung, abzüglich dessen, was auf einer Seite entfernt wurde; bei verschiedenen Filmrollen gilt die des Servers).
+Beim ersten Abgleich einer Datei, die auf beiden Seiten schon liegt, gewinnt die bearbeitete Seite, wenn die andere noch
+unverändert ist; nur wenn beide bearbeitet sind, gibt es die Frage.
+
+**Server-Voraussetzungen:** keine neuen Einstellungen. Hinter einem Reverse Proxy muss die maximale Anfragegrösse mindestens
+8 MB betragen (nginx: `client_max_body_size 8m;`, Standard wäre 1 MB). Obergrenze je Datei `DARKROOM_MAX_UPLOAD_GB` (Standard 2).
+Server und App sollten über https laufen; bei `http://` warnt die App.
+
+**Sicherheit:** Der lokale Server der App hört nur auf `127.0.0.1` an einem zufälligen Port und akzeptiert Anfragen nur mit einem
+Schlüssel, den das App-Fenster bei jedem Start neu bekommt (Cookie, `SameSite=Strict`, dazu eine Prüfung des Host-Namens gegen
+DNS-Rebinding). Eine Webseite im normalen Browser kommt so weder an die Fotos noch kann sie den Abgleich umlenken.
+
+**Bauen und installieren.** Ein Betriebssystem baut nur für sich selbst (PyInstaller, kein Cross-Build):
+
+```bash
+# Windows (PowerShell, Python 3.12 x64):  Ergebnis dist\Darkroom\Darkroom.exe, .zip, mit Inno Setup auch ...-setup.exe
+powershell -ExecutionPolicy Bypass -File desktop\build.ps1
+# macOS / Linux:  Ergebnis dist/Darkroom.app + .dmg bzw. dist/Darkroom + .tar.gz
+bash desktop/build.sh
+```
+
+Das Skript installiert die Abhängigkeiten in `.venv-build`, baut und startet zur Probe `Darkroom --smoke-test`. `.gitlab-ci.yml`
+baut bei einem Tag `v*` oder per Play-Knopf auf Runnern mit den Tags `windows` bzw. `macos` und auf jedem Docker-Runner für Linux.
+Aus dem Quellbaum startet man die App mit `python desktop/main.py` (Optionen `--library`, `--data`, `--browser`).
+
+- **Windows:** nicht signiert, SmartScreen meldet «Unbekannter Herausgeber» → «Weitere Informationen» → «Trotzdem ausführen».
+  Das Fenster nutzt WebView2 (bei Windows 10/11 vorhanden).
+- **macOS:** nicht signiert/notarisiert: beim ersten Start Rechtsklick → «Öffnen», oder `xattr -dr com.apple.quarantine Darkroom.app`.
+- **Linux:** Qt liegt dabei (kein System-WebKit nötig); auf manchen Distributionen fehlen `libxcb-cursor0` o. Ä.
+  Ohne Fenstersystem öffnet `--browser` den Standardbrowser.
+- Signieren/Notarisieren und automatische Updates sind nicht enthalten.
+
 ## Mobile Ansicht
 
 Auf schmalen Bildschirmen (Handy, bis 820 px Breite, auch im Querformat) schaltet dieselbe Seite automatisch auf eine mobile Ansicht um (`?mobile=1` erzwingt sie, `?mobile=0` schaltet sie ab). Es gibt nur **Leuchttisch** und **Galerie**; Dunkelkammer, Scan, Ordnen, Angleichen, KI-Tags und XMP-Export bleiben dem Desktop vorbehalten.

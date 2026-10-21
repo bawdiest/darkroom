@@ -1,0 +1,61 @@
+# Tests laufen bei jedem Push. Die Desktop-Apps (Windows, macOS, Linux) lassen sich nicht auf einem System für die anderen bauen:
+# jedes Betriebssystem braucht einen eigenen Runner. Die Build-Jobs starten bei einem Tag «v*» oder von Hand (Play-Knopf).
+#   - build:linux    läuft auf jedem Docker-Runner
+#   - build:windows  braucht einen Windows-Runner mit Tag «windows» (Python 3.12 x64; optional Inno Setup für den Installer)
+#   - build:macos    braucht einen macOS-Runner mit Tag «macos» (Python 3.12)
+# Fehlt ein Runner, bleibt der jeweilige Job einfach unbenutzt; die anderen sind davon unabhängig.
+stages: [test, build]
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths: [.cache/pip]
+
+test:
+  stage: test
+  image: python:3.12-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends bubblewrap libglib2.0-0 libgl1
+    - pip install -r requirements.txt
+  script:
+    - python -m pytest -q
+
+.build_rules: &build_rules
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - when: manual
+      allow_failure: true
+
+build:linux:
+  stage: build
+  image: python:3.12
+  <<: *build_rules
+  before_script:
+    # Bibliotheken, die Qt (Fenster) und OpenCV zur Laufzeit laden
+    - apt-get update && apt-get install -y --no-install-recommends libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libglib2.0-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libnss3 libasound2
+  script:
+    - bash desktop/build.sh
+  artifacts:
+    paths: ["dist/*.tar.gz"]
+    expire_in: 90 days
+
+build:windows:
+  stage: build
+  tags: [windows]
+  <<: *build_rules
+  script:
+    - powershell -ExecutionPolicy Bypass -File desktop/build.ps1
+  artifacts:
+    paths: ["dist/*.zip", "dist/*-setup.exe"]
+    expire_in: 90 days
+
+build:macos:
+  stage: build
+  tags: [macos]
+  <<: *build_rules
+  script:
+    - bash desktop/build.sh
+  artifacts:
+    paths: ["dist/*.dmg"]
+    expire_in: 90 days

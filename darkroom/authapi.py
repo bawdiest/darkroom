@@ -1,11 +1,14 @@
 """API für Anmeldung und Benutzerverwaltung. Die Schranke für alle übrigen /api-Routen steht in gate()."""
 from __future__ import annotations
 
+import hmac
+import os
+
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
-from . import auth, workspace
+from . import auth, mode, workspace
 
 router = APIRouter()
 PUBLIC = ("/api/status",)  # ohne Anmeldung erreichbar (Healthcheck); /api/auth/* ebenfalls
@@ -20,13 +23,43 @@ def _set_cookie(request: Request, response: Response, token: str) -> None:
                         secure=_secure(request), path="/")
 
 
+def request_token(request: Request) -> str | None:
+    h = request.headers.get("authorization", "")
+    return h[7:].strip() if h[:7].lower() == "bearer " else request.cookies.get(auth.COOKIE)  # Desktop-App: Bearer, Browser: Cookie
+
+
 def current_user(request: Request) -> dict | None:
-    return auth.user_for_token(request.cookies.get(auth.COOKIE))
+    return auth.user_for_token(request_token(request))
+
+
+DESKTOP_COOKIE = "darkroom_desktop"
+
+
+def desktop_guard(request: Request):
+    """Desktop-App: Die lokale API hört nur auf 127.0.0.1 und gehört dem eigenen Fenster. Sonst könnte jede Webseite im Browser
+    (CSRF, DNS-Rebinding) auf Fotos zugreifen oder den Sync auf einen fremden Server umlenken. Das Fenster öffnet die Adresse mit
+    ?k=<Schlüssel> (zufällig pro Start, DARKROOM_DESKTOP_KEY); daraus wird ein Cookie (SameSite=Strict), das /api verlangt."""
+    host = request.headers.get("host", "").rsplit(":", 1)[0].strip("[]").lower()
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return PlainTextResponse("Ungültiger Host", status_code=403)
+    key = os.environ.get("DARKROOM_DESKTOP_KEY", "")
+    if not key:
+        return None
+    if hmac.compare_digest(request.query_params.get("k", ""), key):
+        r = RedirectResponse("/?mobile=0", status_code=303)  # das App-Fenster nutzt immer die volle Ansicht
+        r.set_cookie(DESKTOP_COOKIE, key, httponly=True, samesite="strict", path="/")
+        return r
+    path = request.url.path
+    if path.startswith("/api/") and path != "/api/status" and not hmac.compare_digest(request.cookies.get(DESKTOP_COOKIE, ""), key):
+        return JSONResponse({"detail": "Nicht erlaubt: diese Adresse gehört der Desktop-App."}, status_code=403)
+    return None
 
 
 async def gate(request: Request, call_next):
     """Middleware: ohne gültige Sitzung kein Zugriff auf /api; sonst gilt für den Request der Arbeitsbereich des Benutzers."""
     path = request.url.path
+    if mode.desktop():  # eine Person, kein Konto; geschützt über Host-Prüfung und Schlüssel
+        return desktop_guard(request) or await call_next(request)
     if not path.startswith("/api/") or path.startswith("/api/auth/") or path in PUBLIC or not auth.enabled():
         return await call_next(request)
     user = current_user(request)
@@ -105,9 +138,20 @@ def login(body: Credentials, request: Request, response: Response):
     return u
 
 
+@router.post("/api/auth/token")
+def token(body: Credentials, request: Request):
+    """Langlebiger Zugangs-Token für die Desktop-App (Authorization: Bearer …); das Passwort wird nicht gespeichert."""
+    try:
+        u = auth.login(body.name, body.password, request.client.host if request.client else "")
+    except auth.AuthError as e:
+        raise _err(e, 429 if "Zu viele" in str(e) else 401)
+    auth.logout(u.pop("token"))  # die Cookie-Sitzung dieses Logins wird nicht gebraucht
+    return {"token": auth.new_session(u["id"], auth.TOKEN_DAYS), "user": u}
+
+
 @router.post("/api/auth/logout")
 def logout(request: Request, response: Response):
-    auth.logout(request.cookies.get(auth.COOKIE))
+    auth.logout(request_token(request))
     response.delete_cookie(auth.COOKIE, path="/")
     return {"ok": True}
 

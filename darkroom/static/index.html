@@ -171,6 +171,22 @@
   #uList .u label { color:var(--mute); font-size:12px; display:flex; gap:4px; align-items:center; }
   body.mobile #userName, body.mobile #uAdmin { display:none; }
   body.mobile #userDlg input, body.mobile #userDlg button { font-size:16px; padding:10px 12px; }
+  /* Desktop-App: Abgleich mit dem Server */
+  #syncBox, #importBtn, .desk-only { display:none; }
+  body.desktop #syncBox { display:inline-flex; gap:6px; align-items:center; } body.desktop #importBtn { display:inline-block; } body.desktop .desk-only { display:block; }
+  body.desktop #ai, body.desktop #newPass { display:none; }
+  #syncBtn.off { color:var(--mute); } #syncBtn.err { border-color:#ff7b72; }
+  #confBtn { border-color:#ff7b72; color:#ff7b72; display:none; }
+  #syncDlg, #confDlg { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:0; width:min(94vw, 760px); max-height:88vh; }
+  #syncDlg::backdrop, #confDlg::backdrop { background:rgba(0,0,0,.6); }
+  #syncDlg .in, #confDlg .in { padding:18px; display:flex; flex-direction:column; gap:12px; overflow:auto; max-height:88vh; }
+  #syncDlg h3, #confDlg h3 { margin:0 0 6px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); font-weight:600; }
+  #syncDlg .row, #confDlg .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } #syncDlg input[type=text], #syncDlg input[type=password] { flex:1 1 200px; min-width:0; }
+  #sMsg { font-size:13px; white-space:pre-wrap; min-height:18px; color:var(--mute); } #sMsg.bad { color:#ff7b72; } #sMsg.ok { color:#7ee787; }
+  .cf { border:1px solid var(--line); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .cf .cmp { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .cf pre { margin:0; background:#18181a; border-radius:6px; padding:8px; font:12px/1.4 ui-monospace, Menlo, Consolas, monospace; overflow:auto; max-height:200px; white-space:pre-wrap; }
+  .cf pre b { display:block; color:var(--mute); font:11px system-ui; margin-bottom:4px; } .cf .dl { background:rgba(224,162,74,.25); display:block; }
+  .badge.rem { color:#6aa8ff; border-color:rgba(106,168,255,.6); }
   #lshare, #selShare, #xsheet { display:none; }
   body.mobile #lshare { display:inline-block; }
   body.mobile #selShare.show { display:inline-block; background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
@@ -204,12 +220,15 @@
     </div>
   </span>
   <span id="lightTools" style="margin-left:auto">
+    <button id="importBtn" title="Fotos von einer Speicherkarte oder einem Ordner in die Bibliothek kopieren (nach Aufnahmedatum sortiert), auch ohne Internet">Importieren…</button>
     <button id="scan">Bibliothek scannen</button>
     <button id="organize" title="Dateien in der Bibliothek auf dem Laufwerk nach Jahr/Monat/Tag (Aufnahmedatum) einsortieren">Ordnen</button>
     <button id="match" title="Die angezeigten (gefilterten) unbearbeiteten RAWs im Hintergrund an das eingebettete Kamera-Vorschaubild angleichen (Tonwert-Parameter und Schärfung). Klick während des Laufs stoppt den Job.">Angleichen</button>
     <button id="ai" title="Die angezeigten Fotos per KI automatisch mit Tags versehen (Portrait, Landschaft, Auto …). Klick während des Laufs stoppt den Job.">KI-Tags</button>
     <button id="exportXmp">XMP exportieren</button>
   </span>
+  <span id="syncBox"><button id="confBtn" title="Änderungen, die auf beiden Seiten gemacht wurden">⚠</button>
+    <button id="syncBtn" title="Mit dem Server abgleichen">☁ …</button><button id="syncCfg" title="Verbindung zum Server">⚙</button></span>
   <button id="userBtn" title="Konto" style="display:none">👤 <span id="userName"></span></button>
 </header>
 <div id="backdrop"></div>
@@ -316,6 +335,25 @@
   <div id="authErr"></div>
   <button id="aGo" class="go" type="submit">Anmelden</button>
 </form></div>
+<dialog id="syncDlg"><div class="in">
+  <div><h3>Server</h3><div id="sState"></div></div>
+  <div id="sForm"><h3>Verbinden</h3><div class="row">
+    <input id="sUrl" type="text" placeholder="Adresse, z. B. https://fotos.example.org" autocapitalize="none" spellcheck="false">
+    <input id="sName" type="text" placeholder="Benutzername" autocapitalize="none" autocomplete="username">
+    <input id="sPass" type="password" placeholder="Passwort" autocomplete="current-password">
+    <button id="sGo" class="go">Verbinden</button></div>
+    <p style="color:var(--mute);font-size:12px;margin:6px 0 0">Das Passwort wird nicht gespeichert, nur ein Zugangs-Token dieses Geräts.</p></div>
+  <div><h3>Bibliothek (Fotos auf diesem Gerät)</h3><div class="row"><span id="sLib" style="flex:1;word-break:break-all"></span><button id="sLibBtn">Ändern…</button></div>
+    <p style="color:var(--mute);font-size:12px;margin:6px 0 0">Ein anderer Ordner gilt nach dem Neustart der App. Bereits importierte Fotos werden nicht verschoben.</p></div>
+  <div id="sOpts" style="display:none"><label style="display:flex;gap:8px;align-items:center"><input id="sAuto" type="checkbox"> Automatisch abgleichen, sobald der Server erreichbar ist</label></div>
+  <div id="sMsg"></div>
+  <div class="row"><button id="sOff" style="display:none">Verbindung trennen</button><span class="spacer"></span><button id="sClose" class="go">Schliessen</button></div>
+</div></dialog>
+<dialog id="confDlg"><div class="in">
+  <div><h3>Konflikte</h3><p style="color:var(--mute);font-size:13px;margin:0">Diese Fotos wurden hier und auf dem Server verschieden entwickelt. Es wird nichts überschrieben, bevor du entscheidest.</p></div>
+  <div id="cList"></div>
+  <div class="row"><span class="spacer"></span><button id="cClose" class="go">Schliessen</button></div>
+</div></dialog>
 <dialog id="userDlg"><div class="in">
   <div><h3>Konto</h3><div id="uWho"></div></div>
   <div><h3>Passwort ändern</h3><div class="row">
@@ -354,7 +392,7 @@ let current = null, timer = null, seq = 0;
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
-  if (r.status === 401 && !url.startsWith('/api/auth/')) { if (!$('#auth').classList.contains('open')) showAuth(); throw new Error('Nicht angemeldet'); }
+  if (r.status === 401 && !url.startsWith('/api/auth/') && !document.body.classList.contains('desktop')) { if (!$('#auth').classList.contains('open')) showAuth(); throw new Error('Nicht angemeldet'); }
   if (!r.ok) {
     const j = await r.json().catch(() => null);
     let d = j && j.detail; if (d && typeof d !== 'string') d = JSON.stringify(d);
@@ -514,7 +552,8 @@ async function loadFacets() {
   drawLibrary(); drawChips();
 }
 function badges(ph) {
-  const b = (ph.is_duplicate ? `<span class="badge dup" title="Duplikat (virtuelle Kopie) von ${H(baseName(ph))}: eigene Parameter, Script und Tags, dieselbe Bilddatei">⧉ Duplikat ${ph.version}</span>` : '') +
+  const b = (ph.remote ? '<span class="badge rem" title="Das Original liegt nur auf dem Server (Vorschau vom Server). In der Galerie «Original laden».">☁ Server</span>' : '') +
+            (ph.is_duplicate ? `<span class="badge dup" title="Duplikat (virtuelle Kopie) von ${H(baseName(ph))}: eigene Parameter, Script und Tags, dieselbe Bilddatei">⧉ Duplikat ${ph.version}</span>` : '') +
             (ph.edited ? '<span class="badge" title="Parameter bearbeitet">✎ bearbeitet</span>' : '') +
             (ph.has_script ? (ph.auto_script ? '<span class="badge sc" title="Automatischer Kamera-Look (vom Angleich-Job erzeugt)">&lt;/&gt; Auto</span>'
                                     : '<span class="badge sc" title="Hat ein Script">&lt;/&gt; Script</span>') : '');
@@ -755,6 +794,7 @@ function renderInfo() {
     <div><h3>Kataloge</h3><div class="tags" id="iCats">${f.catalogs.map(c => `<span class="tg cat" data-c="${H(c)}">${H(c)}<b data-rmc="${H(c)}" title="Aus diesem Katalog entfernen">×</b></span>`).join('') || '<span style="color:var(--mute)">in keinem Katalog</span>'}</div>
       <select id="iAddCat" style="margin-top:8px"><option value="">Zu Katalog hinzufügen…</option>${others.map(c => `<option>${H(c.name)}</option>`).join('')}<option value="__new__">＋ Neuer Katalog …</option></select></div>
     <div><h3>Versionen</h3><div class="vers">${f.versions.map(v => `<button class="${v.id === f.id ? 'on' : ''} ${v.is_duplicate ? 'd' : ''}" data-v="${v.id}">${v.is_duplicate ? '⧉ Duplikat ' + v.version : 'Original'}</button>`).join('')}</div></div>
+    ${f.remote ? '<div><h3>Original</h3><div style="color:var(--mute);margin-bottom:6px">Liegt nur auf dem Server. Zum Entwickeln und Exportieren wird die RAW-Datei gebraucht.</div><button id="iDl" class="on">Original laden ☁</button><div id="iDlMsg" style="margin-top:6px;color:var(--mute)"></div></div>' : ''}
     <div class="actions">
       <button id="iDev" class="on">Entwickeln ✎<kbd>⏎</kbd></button>
       <button id="iDup">Duplikat erstellen<kbd>V</kbd></button>
@@ -912,6 +952,160 @@ $('#uList').addEventListener('change', async e => {
   catch (err) { e.target.checked = !e.target.checked; uMsg(err.message); }
 });
 
+// ---------- Desktop-App: Abgleich mit dem Server, Import, Konflikte ----------
+let desk = null, deskTimer = null, wasRunning = {sync:false, imp:false};
+function initDesktop() {
+  document.body.classList.add('desktop');
+  $('#gen').disabled = true; $('#gen').title = 'Scripts erzeugt und führt der Server aus.';
+  $('#genStatus').textContent = 'Scripts laufen in der Desktop-App nicht lokal. Du kannst sie schreiben und speichern; nach dem Abgleich führt der Server sie aus.';
+  pollDesktop();
+}
+async function pollDesktop() {
+  clearTimeout(deskTimer);
+  let busy = false;
+  try {
+    desk = await (await api('/api/desktop/state')).json();
+    drawSync(); busy = desk.sync.running || desk.import.running;
+    if (wasRunning.sync && !desk.sync.running) syncFinished();
+    if (wasRunning.imp && !desk.import.running) importFinished();
+    wasRunning = {sync:desk.sync.running, imp:desk.import.running};
+    if (desk.import.running) $('#count').textContent = `Import: ${desk.import.done}/${desk.import.total} ${desk.import.aktuell}`;
+  } catch (e) {}
+  deskTimer = setTimeout(pollDesktop, busy ? 1500 : 10000);
+}
+function drawSync() {
+  const s = desk.sync, b = $('#syncBtn'), n = (s.konflikte || []).length;
+  b.classList.remove('on', 'off', 'err');
+  $('#confBtn').style.display = n ? 'inline-block' : 'none'; $('#confBtn').textContent = `⚠ ${n} Konflikt${n === 1 ? '' : 'e'}`;
+  if (!desk.configured) { b.classList.add('off'); b.textContent = '☁ Mit Server verbinden'; b.title = 'Server eintragen, damit Fotos und Änderungen abgeglichen werden'; return; }
+  if (s.running) {
+    const pct = s.phase.startsWith('RAW') && s.bytes_total ? ` ${Math.round(100 * s.bytes_done / s.bytes_total)} %` : (s.total ? ` ${s.done}/${s.total}` : '');
+    b.classList.add('on'); b.textContent = `☁ ${s.phase}${pct} ■`; b.title = (s.current || '') + ' (Klick = stoppen)'; return;
+  }
+  if (s.ok === false && s.meldung && s.meldung !== 'Abgebrochen') { b.classList.add('err'); b.textContent = '☁ Abgleich fehlgeschlagen'; b.title = s.meldung; return; }
+  if (!desk.online) { b.classList.add('off'); b.textContent = '☁ Offline' + (desk.pending ? ` · ${desk.pending} ausstehend` : ''); b.title = `Server nicht erreichbar (${desk.server}). Alles wird lokal gespeichert und später abgeglichen.`; return; }
+  const left = Math.max(0, desk.pending - n);  // offene Konflikte stehen beim ⚠, nicht hier
+  b.textContent = left ? `☁ ${left} ausstehend · Abgleichen` : '☁ Synchronisiert ✓'; b.title = `Verbunden mit ${desk.server} als ${desk.user}`;
+}
+async function syncFinished() {
+  const s = desk.sync;
+  await loadFacets().catch(() => {}); await loadGrid().catch(() => {});
+  if (s.kind === 'auth') { openSyncDlg(s.meldung); return; }
+  const n = (s.konflikte || []).length;
+  $('#count').textContent = s.ok === false ? `Abgleich: ${s.meldung}` :
+    `Abgleich fertig: ${s.hochgeladen} RAW hochgeladen, ${s.gesendet} gesendet, ${s.geholt} geholt` + (s.geloescht ? `, ${s.geloescht} gelöscht` : '') +
+    (s.fehler.length ? ` · ${s.fehler.length} Fehler: ${s.fehler[0]}` : '') + (n ? ` · ${n} Konflikt${n === 1 ? '' : 'e'} warten auf dich (⚠)` : '');
+}
+async function importFinished() {
+  const s = desk.import;
+  await loadFacets().catch(() => {}); await loadGrid().catch(() => {});
+  $('#count').textContent = s.meldung && s.meldung !== 'Abgebrochen' ? `Import fehlgeschlagen: ${s.meldung}` :
+    `Import fertig: ${s.kopiert} kopiert, ${s.uebersprungen} schon vorhanden` + (s.scan ? `, ${s.scan.neu} neu eingelesen` : '') + (s.fehler.length ? `, ${s.fehler.length} Fehler: ${s.fehler[0]}` : '');
+}
+$('#syncBtn').onclick = async () => {
+  if (!desk || !desk.configured) return openSyncDlg();
+  try { if (desk.sync.running) await api('/api/desktop/sync', {method:'DELETE'}); else await post('/api/desktop/sync'); } catch (e) { alert(e.message); }
+  pollDesktop();
+};
+$('#importBtn').onclick = async () => {
+  let folder = null;
+  try { if (window.pywebview && window.pywebview.api && window.pywebview.api.choose_folder) folder = await window.pywebview.api.choose_folder('Ordner mit den Fotos wählen (z. B. Speicherkarte)'); } catch (e) {}
+  if (!folder) folder = prompt('Ordner mit den Fotos (Speicherkarte oder Ordner), vollständiger Pfad:');
+  if (!folder) return;
+  const now = new Date(), pad = n => String(n).padStart(2, '0');
+  const roll = prompt('Neue Fotos kommen in die Filmrolle:', `Import ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+  if (roll === null) return;
+  try { await post('/api/desktop/import', {folder, roll}); } catch (e) { alert(e.message); }
+  pollDesktop();
+};
+// Verbindung zum Server
+const sMsg = (t, cls = '') => { $('#sMsg').textContent = t || ''; $('#sMsg').className = cls; };
+function openSyncDlg(msg) {
+  const on = desk && desk.configured;
+  $('#sState').textContent = on ? `Verbunden mit ${desk.server} als ${desk.user} · ${desk.online ? 'Server erreichbar' : 'Server nicht erreichbar (offline)'}` : 'Noch nicht verbunden.';
+  $('#sForm').querySelector('h3').textContent = on ? 'Neu verbinden (z. B. nach einem Passwortwechsel)' : 'Verbinden';
+  $('#sOpts').style.display = on ? '' : 'none'; $('#sOff').style.display = on ? '' : 'none'; $('#sAuto').checked = on ? desk.auto : true;
+  $('#sPass').value = ''; if (on && !$('#sUrl').value) { $('#sUrl').value = desk.server; $('#sName').value = desk.user; }
+  sMsg(msg, msg ? 'bad' : ''); loadLibraryInfo(); $('#syncDlg').showModal();
+}
+$('#syncCfg').onclick = () => openSyncDlg();
+async function loadLibraryInfo() {
+  try {
+    const l = await (await api('/api/desktop/library')).json();
+    $('#sLib').textContent = l.path; $('#sLibBtn').style.display = l.aenderbar ? '' : 'none';
+  } catch (e) {}
+}
+$('#sLibBtn').onclick = async () => {
+  let folder = null;
+  try { if (window.pywebview && window.pywebview.api && window.pywebview.api.choose_folder) folder = await window.pywebview.api.choose_folder('Bibliothek-Ordner wählen'); } catch (e) {}
+  if (!folder) folder = prompt('Neuer Bibliothek-Ordner (vollständiger Pfad):');
+  if (!folder) return;
+  try {
+    await putJson('/api/desktop/library', {path:folder});
+    $('#sLib').textContent = folder;
+    if (confirm('Die App muss neu starten, damit der neue Ordner gilt. Jetzt neu starten?')) {
+      if (window.pywebview && window.pywebview.api && window.pywebview.api.restart) window.pywebview.api.restart();
+      else sMsg('Bitte die App schliessen und neu öffnen.', 'ok');
+    } else sMsg('Gilt ab dem nächsten Start.', 'ok');
+  } catch (e) { sMsg(e.message, 'bad'); }
+};
+$('#sClose').onclick = () => $('#syncDlg').close();
+$('#sGo').onclick = async () => {
+  sMsg('verbinde …');
+  try {
+    const r = await putJson('/api/desktop/connection', {server:$('#sUrl').value.trim(), name:$('#sName').value.trim(), password:$('#sPass').value});
+    $('#sPass').value = ''; await pollDesktop();
+    sMsg(`Verbunden als ${r.user}.` + (r.unverschluesselt ? '\nAchtung: Die Adresse beginnt mit http://, die Verbindung ist nicht verschlüsselt. Im eigenen Netz ist das in Ordnung, über das Internet nicht.' : ''), 'ok');
+    openSyncDlgRefresh();
+  } catch (e) { sMsg(e.message, 'bad'); }
+};
+function openSyncDlgRefresh() { const on = desk && desk.configured; $('#sState').textContent = on ? `Verbunden mit ${desk.server} als ${desk.user}` : 'Noch nicht verbunden.'; $('#sOpts').style.display = on ? '' : 'none'; $('#sOff').style.display = on ? '' : 'none'; }
+$('#sOff').onclick = async () => {
+  if (!confirm('Verbindung trennen? Die lokalen Fotos bleiben, es wird nur nicht mehr abgeglichen.')) return;
+  try { await api('/api/desktop/connection', {method:'DELETE'}); await pollDesktop(); $('#syncDlg').close(); } catch (e) { sMsg(e.message, 'bad'); }
+};
+$('#sAuto').onchange = async e => { try { await putJson('/api/desktop/settings', {auto:e.target.checked}); await pollDesktop(); } catch (err) { sMsg(err.message, 'bad'); } };
+// Konflikte
+function drawConflicts() {
+  const list = (desk && desk.sync.konflikte) || [];
+  $('#cList').innerHTML = list.map(c => `<div class="cf" data-key="${H(c.key)}"><div><b>${H(c.fname)}</b> <small style="color:var(--mute)">${H(c.rel)}</small></div>
+    <div class="row"><button data-a="cmp">Vergleichen</button>
+      <button data-a="local" title="Deine Fassung bleibt, die Fassung auf dem Server wird überschrieben">Meine behalten</button>
+      <button data-a="remote" title="Die Server-Fassung ersetzt deine (deine Änderungen an diesem Foto gehen verloren)">Server übernehmen</button>
+      <button data-a="both" title="Deine Fassung wird als Duplikat gesichert, das Original bekommt die Server-Fassung">Beide behalten</button></div>
+    <div class="cmp" style="display:none"></div></div>`).join('') || '<div style="color:var(--mute)">Keine offenen Konflikte.</div>';
+}
+$('#confBtn').onclick = () => { drawConflicts(); $('#confDlg').showModal(); };
+$('#cClose').onclick = () => $('#confDlg').close();
+const lines = t => (t || '').split('\n');
+function diffPre(title, a, b) {
+  const other = new Set(lines(b)), only = lines(a).filter(l => l.trim() && !other.has(l));  // nur Zeilen, die es auf der anderen Seite nicht gibt
+  return `<pre><b>${title}</b>${only.length ? only.map(l => `<span class="dl">${H(l)}</span>`).join('') : '<i style="color:var(--mute)">(nichts, was nur hier steht)</i>'}</pre>`;
+}
+$('#cList').addEventListener('click', async e => {
+  const btn = e.target.closest('button'), card = e.target.closest('.cf'); if (!btn || !card) return;
+  const key = card.dataset.key, cmp = card.querySelector('.cmp');
+  try {
+    if (btn.dataset.a === 'cmp') {
+      if (cmp.style.display !== 'none') { cmp.style.display = 'none'; return; }
+      const d = await (await api(`/api/desktop/conflicts/${key}`)).json();
+      const side = x => (x.params || '') + ((x.script || '').trim() ? '\n# --- Script ---\n' + x.script : '');
+      cmp.innerHTML = diffPre('Meine Fassung', side(d.local), side(d.remote)) + diffPre('Server', side(d.remote), side(d.local)); cmp.style.display = '';
+    } else {
+      btn.disabled = true; await post(`/api/desktop/conflicts/${key}`, {choice:btn.dataset.a});
+      await pollDesktop(); drawConflicts(); await loadGrid();
+      if (!(desk.sync.konflikte || []).length) { $('#confDlg').close(); await post('/api/desktop/sync').catch(() => {}); pollDesktop(); }
+    }
+  } catch (err) { alert(err.message); btn.disabled = false; }
+});
+// Original nachladen (Foto liegt nur auf dem Server)
+$('#linfo').addEventListener('click', async e => {
+  if (e.target.id !== 'iDl') return;
+  const id = linfo.id; e.target.disabled = true; $('#iDlMsg').textContent = 'lädt … (bei grossen RAW-Dateien dauert das einen Moment)';
+  try { await post(`/api/desktop/original/${id}`); await loadGrid(); await openLoupe(id); }
+  catch (err) { $('#iDlMsg').textContent = err.message; e.target.disabled = false; }
+});
+
 // ---------- Teilen / Export für das Handy (z. B. WhatsApp) ----------
 let shareIds = [], shareFiles = null, shareProfLoaded = false;
 const SHARE_MAX = 30;  // WhatsApp nimmt höchstens 30 Bilder auf einmal
@@ -1030,6 +1224,7 @@ $('#tabLoupe').onclick = () => { if (!current) return; if (dirty) { dirty = fals
 
 async function openDark(ph) {
   if (isMobile()) return;  // die Entwicklung gibt es nur am Desktop
+  if (ph.remote) { $('#lstat').textContent = 'Das Original liegt nur auf dem Server: zuerst «Original laden» (rechts).'; $('#linfo').scrollTop = 1e6; return; }
   current = ph; darkId = ph.id; $('#tabDark').disabled = false; $('#tabLoupe').disabled = false; show('dark');
   $('#dtitle').innerHTML = H(label(ph));
   $('#pimg').src = `/api/photos/${ph.id}/view?cached=1`; $('#pimg').onerror = () => { $('#pimg').onerror = null; if (!$('#pimg').src.startsWith('blob:')) $('#pimg').src = `/api/thumb/${ph.id}?v=${ph.thumb_v}`; };  // sofort etwas zeigen, bis die Vorschau fertig ist
@@ -1050,7 +1245,7 @@ async function renderPreview() {
     if (my !== seq) return;
     const url = URL.createObjectURL(await r.blob());
     $('#pimg').onload = () => URL.revokeObjectURL(url);
-    $('#pimg').src = url; $('#err').textContent = ''; const ls = r.headers.get('X-Lens-Status'); $('#status').className = ''; $('#status').textContent = (ls ? decodeURIComponent(ls) + ' · ' : '') + `gerendert in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    $('#pimg').src = url; $('#err').textContent = ''; const ls = r.headers.get('X-Lens-Status'); $('#status').className = ''; $('#status').textContent = (ls ? decodeURIComponent(ls) + ' · ' : '') + (r.headers.get('X-Script-Skipped') ? 'Script läuft erst auf dem Server · ' : '') + `gerendert in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
   } catch (e) { if (my === seq) { $('#err').textContent = e.message; $('#status').className = 'bad'; $('#status').textContent = 'Vorschau fehlgeschlagen:\n' + e.message; } }
 }
 async function save() {
@@ -1169,7 +1364,7 @@ $('#exportBtn').onclick = async () => {
     const r = await api(`/api/photos/${current.id}/export`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile:$('#profSel').value})});
     const blob = await r.blob(), a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = baseName(current).replace(/\.[^.]+$/, '') + (current.is_duplicate ? '_d' + current.version : '') + (blob.type.includes('tif') ? '.tif' : '.jpg'); a.click();
-    $('#status').textContent = 'exportiert (auch in data/exports gespeichert)';
+    $('#status').textContent = 'exportiert (auch in data/exports gespeichert)' + (r.headers.get('X-Script-Skipped') ? ' · ohne Script (läuft erst auf dem Server)' : '');
   } catch (e) { $('#err').textContent = e.message; $('#status').textContent = ''; }
 };
 (async () => {
@@ -1178,6 +1373,7 @@ $('#exportBtn').onclick = async () => {
   const st = await (await api('/api/status')).json();
   $('#sbx').textContent = 'Sandbox: ' + st.sandbox.description + (st.ai.configured ? '' : ' · KI nicht konfiguriert');
   $('#sbx').classList.toggle('bad', !st.sandbox.allowed || !st.ai.configured);
+  if (st.mode === 'desktop') initDesktop();
 })();
 $('#presetSel').onchange = e => {
   if (!e.target.value) return;

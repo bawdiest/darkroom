@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+from contextlib import asynccontextmanager
 import threading
 from urllib.parse import quote
 
@@ -12,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from . import ai, authapi, automatch, catalog, policy, sandbox, tagging
+from . import ai, authapi, automatch, catalog, desktopapi, mode, policy, sandbox, syncapi, tagging
 from .workspace import current as _ws
 from .checks import ScriptError
 from .output import encode, load_profiles
@@ -20,9 +21,20 @@ from .render import develop, to_jpeg, to_uint8
 from .schema import Params, dump_params, load_params
 from .xmp import write_xmp
 
-app = FastAPI(title="Darkroom")
+@asynccontextmanager
+async def _lifespan(_app):
+    auto = desktopapi.start_auto() if mode.desktop() else None  # Desktop-App: Server-Erreichbarkeit prüfen, bei Bedarf abgleichen
+    yield
+    if auto:
+        auto.halt.set()
+
+
+app = FastAPI(title="Darkroom", lifespan=_lifespan)
 app.middleware("http")(authapi.gate)  # ohne Anmeldung kein Zugriff auf /api; setzt den Arbeitsbereich des Benutzers
 app.include_router(authapi.router)
+app.include_router(syncapi.router)
+if mode.desktop():
+    app.include_router(desktopapi.router)
 STATIC = Path(__file__).parent / "static"
 
 
@@ -56,6 +68,8 @@ def _script_params(p: Params, scale: float) -> dict:
 def _develop_with_script(row, p: Params, script: str | None, max_side: int | None, timeout: float):
     """RAW + Parameter -> Bild, danach optional das Script in der Sandbox."""
     path = catalog.raw_path(row)
+    if catalog._get(row, "remote"):
+        raise HTTPException(409, "Das Original liegt nur auf dem Server. Zuerst «Original laden» (Info-Blatt der Galerie).")
     try:
         img, scale = develop(path, p, max_side)
     except Exception as e:  # noqa: BLE001 - verständliche Meldung statt «500»
@@ -64,7 +78,7 @@ def _develop_with_script(row, p: Params, script: str | None, max_side: int | Non
         traceback.print_exc()
         what = "Datei nicht gefunden" if not path.exists() else f"{type(e).__name__}: {e}"
         raise HTTPException(500, f"Entwickeln von {path.name} fehlgeschlagen ({what}). Details im Container-Log.")
-    if script and script.strip():
+    if script and script.strip() and not mode.desktop():  # Desktop-App: Scripts laufen erst auf dem Server
         try:
             img = sandbox.run_script(script, img, _script_params(p, scale), timeout=timeout)
         except ScriptError as e:
@@ -112,7 +126,7 @@ def _refresh_thumb(pid: str) -> None:
 # ---------- Leuchttisch ----------
 @app.get("/api/status")
 def status():
-    return {"sandbox": sandbox.status(), "ai": ai.provider_status()}
+    return {"sandbox": sandbox.status(), "ai": ai.provider_status(), "mode": "desktop" if mode.desktop() else "server"}
 
 
 @app.get("/api/photos")
@@ -284,6 +298,11 @@ def photo_view(pid: str, original: bool = False, cached: bool = False, prefetch:
     cached=1: nur liefern, wenn schon erzeugt (sonst 404). prefetch=1: nichts Aufwendiges rendern (sonst 204)."""
     row = _photo(pid)
     hdr = {"Cache-Control": "no-cache"}
+    if catalog._get(row, "remote"):  # Original nur auf dem Server: kleine Server-Vorschau statt einer Entwicklung
+        f = catalog.THUMBS / f"{pid}.jpg"
+        if f.exists():
+            return FileResponse(f, headers=hdr)
+        raise HTTPException(404, "Vorschau fehlt (synchronisieren)")
     if _view_fresh(row, original):
         return FileResponse(_view_cache(pid, original), headers=hdr)
     if cached:
@@ -417,7 +436,7 @@ def preview(pid: str, body: PreviewBody, max_side: int = 1600):
     row = _photo(pid)
     p = _parse(body.yaml)
     img = _develop_with_script(row, p, body.script, max_side, policy.PREVIEW_TIMEOUT)
-    headers = {}
+    headers = {"X-Script-Skipped": "1"} if mode.desktop() and (body.script or "").strip() else {}
     if p.lens.enabled:
         from . import lenscorr
 
@@ -549,6 +568,8 @@ def generate(pid: str, body: GenerateBody):
     if not body.prompt.strip():
         raise HTTPException(422, "Bitte beschreibe, was mit dem Foto passieren soll.")
     st = sandbox.status()
+    if st.get("server_only"):
+        raise HTTPException(503, "Scripts erzeugt und ausführt der Server. Bitte online synchronisieren und dort arbeiten (oder das Script von Hand schreiben, es läuft nach dem Sync auf dem Server).")
     if not st["allowed"]:
         raise HTTPException(503, f"Sandbox nicht verfügbar ({st['description']}, verlangt: {st['required']}). Siehe README.")
     p = _parse(body.yaml)
@@ -590,7 +611,7 @@ def export_photo(pid: str, body: ExportBody):
     out = catalog.EXPORTS_DIR / body.profile / (catalog.export_stem(row) + "." + ext)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
-    return FileResponse(out, filename=out.name)
+    return FileResponse(out, filename=out.name, headers={"X-Script-Skipped": "1"} if mode.desktop() and script and script.strip() else None)
 
 
 @app.post("/api/photos/{pid}/share")

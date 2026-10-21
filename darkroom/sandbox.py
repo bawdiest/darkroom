@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import policy
+from . import mode, policy
 from .checks import SandboxError, ScriptError, check_script, validate_output
 
 RUNNER = Path(__file__).with_name("sandbox_runner.py")
@@ -67,6 +67,9 @@ def minimum_level() -> str:
 
 
 def status() -> dict:
+    if mode.desktop():  # Desktop-App: Scripts laufen nie lokal, sondern nach dem Sync auf dem Server
+        return {"level": "server", "description": "Scripts laufen nach dem Sync auf dem Server", "required": "server",
+                "allowed": False, "server_only": True}
     lvl = detect_level()
     return {
         "level": lvl,
@@ -145,6 +148,8 @@ def run_script(code: str, img: np.ndarray, params: dict, timeout: float = policy
     """Prüft und führt ein Script isoliert aus. Gibt das geprüfte Ergebnis (float32, H x W x 3, 0..1) zurück
     oder wirft ScriptError mit einer verständlichen Meldung."""
     st = status()
+    if st.get("server_only"):
+        raise SandboxError("Scripts laufen in der Desktop-App nicht. Sie werden nach der Synchronisierung auf dem Server ausgeführt.")
     if not st["allowed"]:
         raise SandboxError(
             f"Scripts sind gesperrt: Sandbox-Stufe '{st['level']}' ({st['description']}), verlangt ist '{st['required']}'. "
