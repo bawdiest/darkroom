@@ -823,6 +823,25 @@ def _rename(old: Path, new: Path) -> None:
         os.replace(old, new)
 
 
+def _rename_meta(con, old: str, new: str, cats: dict, rolls: dict) -> None:
+    """Benennt alle Metadaten (Index, Parameter, Script, KI-Tags, Vorschau, Kataloge, Filmrollen) von Original `old` und seinen
+    Duplikaten auf den neuen Pfad `new` um. Die Bilddatei selbst fasst das nicht an."""
+    group = [(r["id"], r["path"], r["version"] or 0) for r in con.execute("SELECT id, path, version FROM photos WHERE path=? OR source=?", (old, old))]
+    for pid, path, ver in group:
+        npath = new if not ver else f"{new}{DUP_SEP}{ver}"
+        nid = photo_id(npath)
+        for f_of in (params_file, script_file, ai_tags_file):
+            _rename(f_of(path), f_of(npath))
+        _rename(THUMBS / f"{pid}.jpg", THUMBS / f"{nid}.jpg")
+        for v in VIEWS.glob(f"{pid}-*.jpg"):
+            v.unlink()
+        con.execute("UPDATE photos SET id=?, path=?, source=CASE WHEN source IS NULL THEN NULL ELSE ? END WHERE id=?", (nid, npath, new, pid))
+        for ps in (*cats.values(), *rolls.values()):
+            ps[:] = [npath if p == path else p for p in ps]
+        _STATE_CACHE.pop((_ws().key, path), None)
+    con.commit()
+
+
 def _move_one(con, row_id: str, old: str, new: str, cats: dict, rolls: dict) -> None:
     """Verschiebt Datei, XMPs und alle Metadaten (Original und Duplikate) von `old` nach `new`."""
     src = LIBRARY / old
@@ -831,26 +850,10 @@ def _move_one(con, row_id: str, old: str, new: str, cats: dict, rolls: dict) -> 
         raise FileExistsError(new)
     dst.parent.mkdir(parents=True, exist_ok=True)
     os.rename(src, dst)  # schlägt fehl, wenn nicht schreibbar: dann ist noch nichts verändert
-    try:
-        for xo, xn in ((src.with_name(src.name + ".xmp"), dst.with_name(dst.name + ".xmp")), (src.with_suffix(".xmp"), dst.with_suffix(".xmp"))):
-            if xo.exists() and not xn.exists():
-                _rename(xo, xn)
-        group = [(r["id"], r["path"], r["version"] or 0) for r in con.execute("SELECT id, path, version FROM photos WHERE path=? OR source=?", (old, old))]
-        for pid, path, ver in group:
-            npath = new if not ver else f"{new}{DUP_SEP}{ver}"
-            nid = photo_id(npath)
-            for f_of in (params_file, script_file, ai_tags_file):
-                _rename(f_of(path), f_of(npath))
-            _rename(THUMBS / f"{pid}.jpg", THUMBS / f"{nid}.jpg")
-            for v in VIEWS.glob(f"{pid}-*.jpg"):
-                v.unlink()
-            con.execute("UPDATE photos SET id=?, path=?, source=CASE WHEN source IS NULL THEN NULL ELSE ? END WHERE id=?", (nid, npath, new, pid))
-            for ps in (*cats.values(), *rolls.values()):
-                ps[:] = [npath if p == path else p for p in ps]
-            _STATE_CACHE.pop((_ws().key, path), None)
-        con.commit()
-    except Exception:
-        raise
+    for xo, xn in ((src.with_name(src.name + ".xmp"), dst.with_name(dst.name + ".xmp")), (src.with_suffix(".xmp"), dst.with_suffix(".xmp"))):
+        if xo.exists() and not xn.exists():
+            _rename(xo, xn)
+    _rename_meta(con, old, new, cats, rolls)
 
 
 def organize(ids: list[str] | None = None) -> dict:

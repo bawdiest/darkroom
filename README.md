@@ -127,6 +127,26 @@ Duplikate folgen der Rolle ihres Originals. Die Zuordnung steht in `data/rolls.y
 
 **Duplikate** (virtuelle Kopien) haben eigene Parameter, ein eigenes Script, eigene Tags und Bewertung, teilen sich aber die Bilddatei (es wird nichts kopiert). Sie sind überall blau gestrichelt und mit «⧉ Duplikat N» markiert und stehen im Raster direkt hinter ihrem Original. Anlegen: Galerie (`V` oder Knopf), oder im Raster mehrere auswählen und «Duplizieren». Ein Duplikat startet mit dem aktuellen Stand der Vorlage und bleibt in deren Katalogen. Löschen lassen sich nur Duplikate, nie Originale. Gespeichert werden sie als `data/params/<Original>~dN.yaml` (plus Script und KI-Tags unter demselben Namen); nach einem Neuaufbau des Index stellt «Bibliothek scannen» sie daraus wieder her. Beim XMP-Export werden Duplikate übersprungen (XMP kennt pro Datei nur eine Version); der Export aus der Dunkelkammer heisst `<Name>_dN.jpg`.
 
+## Fotos in einen anderen Ordner der Bibliothek verschieben
+
+Alle Daten eines Fotos (Index, Parameter, Script, KI-Tags, Vorschau, Filmrollen, Kataloge, Duplikate) hängen an seinem Pfad
+relativ zur Bibliothek. Verschiebt man Dateien von Hand (z. B. die Fotos des Admins nach `bawdiest/`), findet die App sie
+nicht mehr. `darkroom.relocate` schreibt die Pfade um, ohne die Bilddateien anzufassen. Ohne `--apply` zeigt es nur eine Vorschau:
+
+```bash
+python -m darkroom.relocate --to bawdiest                # Vorschau: alle Fotos bekommen den Ordner «bawdiest» vorangestellt
+python -m darkroom.relocate --to bawdiest --apply        # umschreiben (vorher Sicherung von Index, rolls.yaml, catalogs.yaml)
+python -m darkroom.relocate --from alt --to neu --apply  # Ordner umbenannt
+python -m darkroom.relocate --user anna --to anna --apply  # für einen anderen Benutzer (Standard: Admin/Besitzer)
+```
+
+In Docker/Portainer im Container ausführen (Container → Console, oder `docker exec -it <container> python -m darkroom.relocate …`).
+Die Fotos müssen schon am neuen Ort liegen; fehlen Dateien, bricht das Werkzeug ab, ohne etwas zu ändern. Wurde nach dem Verschieben
+schon «Bibliothek scannen» gedrückt, ersetzt es die dabei entstandenen unbearbeiteten Doppelgänger durch die echten Einträge
+(bearbeitete bleiben und werden gemeldet; die dadurch leere «Import …»-Filmrolle verschwindet). Der Lauf ist wiederholbar.
+Der Abgleich mit der Desktop-App ist nicht betroffen, er erkennt Fotos am Inhalt. Zeigt stattdessen `DARKROOM_LIBRARY` selbst auf den
+neuen Ordner, bleiben die Pfade gültig und es ist nichts umzuschreiben.
+
 ## Desktop-App (Windows, macOS, Linux)
 
 Eigenständige App für Notebook und PC: Fotos importieren, bewerten, ordnen und entwickeln **ohne Internet**; sobald der Server
