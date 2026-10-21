@@ -52,7 +52,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, name: windows-x64, pattern: "dist/*.zip dist/*-setup.exe" }
+          # mehrere Muster müssen auf getrennten Zeilen stehen (\n), sonst gilt «dist/*.zip dist/*-setup.exe» als ein Muster
+          - { os: windows-latest, name: windows-x64, pattern: "dist/*.zip\ndist/*-setup.exe" }
           - { os: macos-latest, name: macos, pattern: "dist/*.dmg" }
           - { os: ubuntu-latest, name: linux, pattern: "dist/*.tar.gz" }
     runs-on: ${{ matrix.os }}
