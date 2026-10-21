@@ -2,11 +2,13 @@
 #   - Bei jedem Push und Pull Request laufen nur die Tests.
 #   - Setzt du einen Tag «v…» (z. B. v0.2.0) und pushst ihn, werden alle Apps gebaut und unter «Releases» veröffentlicht.
 #   - Von Hand starten: Actions -> «Desktop-App» -> Run workflow (baut, veröffentlicht aber nichts).
+#   - Windows ARM64 (nativ) baut der Job «build-windows-arm»: bei einem Tag, von Hand und bei einem Push auf den Branch «arm-build».
+#     Beim Push auf «arm-build» hängt er das ZIP an das schon bestehende Release der aktuellen Version an (ohne neuen Tag).
 name: Desktop-App
 
 on:
   push:
-    branches: [main]
+    branches: [main, arm-build]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -85,13 +87,15 @@ jobs:
           path: ${{ matrix.pattern }}
           if-no-files-found: error
 
-  # Windows on ARM nativ. GitHubs ARM-Rechner gibt es nur für öffentliche Repos; der Job ist deshalb nur aktiv, wenn in den
-  # Repo-Einstellungen (Settings -> Secrets and variables -> Actions -> Variables) BUILD_WINDOWS_ARM auf «true» steht.
-  # Ohne die Variable wird er übersprungen und stört das Release nicht. (Lokal baut desktop\build.ps1 -Python <ARM64-Python> dasselbe.)
+  # Windows on ARM nativ (GitHubs ARM-Rechner gibt es für öffentliche Repos). Läuft bei einem Tag, von Hand und beim Push auf den
+  # Branch «arm-build». Ein Fehler hier blockiert das Release der anderen Apps nicht (continue-on-error).
   build-windows-arm:
-    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && vars.BUILD_WINDOWS_ARM == 'true'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/arm-build'
     needs: test
     runs-on: windows-11-arm
+    continue-on-error: true
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -106,9 +110,17 @@ jobs:
           name: darkroom-windows-arm64
           path: dist/*-arm64*.zip
           if-no-files-found: error
+      - name: An das bestehende Release anhängen (nur Branch arm-build)
+        if: github.ref == 'refs/heads/arm-build'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path darkroom/__init__.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          gh release upload "v$version" (Get-ChildItem dist/*-arm64*.zip).FullName --clobber --repo "${{ github.repository }}"
 
   release:
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && contains('success skipped', needs.build-windows-arm.result) }}
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' && contains('success skipped failure', needs.build-windows-arm.result) }}
     needs: [build, build-windows-arm]
     runs-on: ubuntu-latest
     permissions:
