@@ -189,8 +189,10 @@ Aus dem Quellbaum startet man die App mit `python desktop/main.py` (Optionen `--
   OpenCV: Drehen, Weichzeichnen, Skalieren stimmen praktisch überein, die Rauschreduzierung rechnet im gleichen Verfahren etwas
   anders und ist langsamer, ca. 9 s statt 1 s bei 1,5 Megapixeln), und die **Objektivkorrektur fehlt**. Gebaut wird sie mit
   `desktop\build.ps1 -Python <Pfad zu Python 3.12 ARM64>` auf einem ARM-Rechner; die Architektur erkennt das Skript am Python.
-  GitHubs ARM-Rechner stehen nur öffentlichen Repos zur Verfügung: für das Release dort die Repo-Variable `BUILD_WINDOWS_ARM=true`
-  setzen, sonst bleibt dieser Job aus.
+  Auf GitHub baut sie der Job `build-windows-arm` auf GitHubs ARM-Rechnern (nur für öffentliche Repos verfügbar): bei jedem Tag
+  `v…` mit den anderen Apps, und ohne neuen Tag bei einem Push auf den Branch `arm-build`, wobei das ZIP an das schon bestehende
+  Release der aktuellen Version angehängt wird (`git branch -f arm-build HEAD && git push github arm-build`). Ein Fehler dieses
+  Jobs blockiert das Release der anderen Apps nicht.
 - **Windows (alle):** nicht signiert, SmartScreen meldet «Unbekannter Herausgeber» → «Weitere Informationen» → «Trotzdem ausführen».
   Fehlermeldungen der fensterlosen App stehen in `%APPDATA%\Darkroom\darkroom.log`.
   Das Fenster nutzt WebView2 (bei Windows 10/11 vorhanden).
