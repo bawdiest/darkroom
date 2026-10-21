@@ -29,6 +29,10 @@ class FakeModifier:
 
     def apply_color_modification(self, img):
         h, w = img.shape[:2]
+        if FakeModifier.gain == "no_data":  # Objektiv ohne Vignettierungsdaten: float32 -> False, uint16 kennt lensfunpy gar nicht
+            if img.dtype == np.uint16:
+                raise TypeError("No matching signature found")
+            return False
         if img.dtype.kind == "f" and FakeModifier.float_broken:
             img[:] = np.nan
             return True
@@ -105,6 +109,17 @@ class Lens(unittest.TestCase):
             self.assertIn("uint16", report)
         finally:
             FakeModifier.float_broken = False
+
+    def test_lens_without_vignetting_data_does_not_crash(self):
+        FakeModifier.gain = "no_data"
+        try:
+            with self.patch():
+                out = lenscorr.apply(self.img, self.path, LensProfile(enabled=True, distortion=False, tca=False))
+                report = lenscorr.vignette_report(self.path)
+            np.testing.assert_allclose(out, self.img)  # keine Vignettierungskorrektur, aber auch kein Absturz
+            self.assertIn("übersprungen", report)
+        finally:
+            FakeModifier.gain = "radial"
 
     def test_all_probes_fail_reports_reasons(self):
         FakeModifier.gain = "left_blown"

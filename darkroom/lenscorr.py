@@ -82,7 +82,10 @@ GAIN_PROBES = [(np.float32, 1.0), (np.uint16, 20000), (np.uint8, 80)]
 def _probe_gain(mod, h: int, w: int, dtype, base) -> np.ndarray | None:
     """Aufhellung aus lensfun an einem einfarbigen Testbild. None, wenn lensfun nichts liefert."""
     ones = np.full((h, w, 3), base, dtype=dtype)
-    if not mod.apply_color_modification(ones):
+    try:
+        if not mod.apply_color_modification(ones):
+            return None
+    except TypeError:  # lensfunpy kennt nicht jeden Datentyp (uint16 z. B. nicht): dieser Versuch zählt als «keine Korrektur»
         return None
     return ones[..., 1].astype(np.float64) / float(base)
 
