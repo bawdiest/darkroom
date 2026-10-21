@@ -129,13 +129,14 @@ Duplikate folgen der Rolle ihres Originals. Die Zuordnung steht in `data/rolls.y
 
 ## Mobile Ansicht
 
-Auf schmalen Bildschirmen (Handy, bis 820 px Breite) schaltet dieselbe Seite automatisch auf eine mobile Ansicht um (`?mobile=1` erzwingt sie, `?mobile=0` schaltet sie ab). Es gibt nur **Leuchttisch** und **Galerie**; Dunkelkammer, Scan, Ordnen, Angleichen, KI-Tags und XMP-Export bleiben dem Desktop vorbehalten.
-- **Leuchttisch:** ☰ öffnet Filmrollen, Kataloge, «Nach Datum» und die Filter als Seitenmenü; die Suche liegt darunter in voller Breite. Raster mit grossen Kacheln; Tippen öffnet die Galerie, der Kreis oben rechts auf der Kachel wählt aus (dann «In Filmrolle verschieben», «Zu Katalog hinzufügen», «Duplizieren»).
-- **Galerie:** Bild füllt den Bildschirm. Wischen nach links/rechts blättert, Doppeltippen oder Zweifinger-Zoom vergrössert (verschieben mit einem Finger), ⓘ blendet die Angaben als Blatt von unten ein (Bewertung, Tags, Filmrolle, Katalog, Duplikat erstellen/löschen), «Original» wechselt zum Kamera-Vorschaubild.
+Auf schmalen Bildschirmen (Handy, bis 820 px Breite, auch im Querformat) schaltet dieselbe Seite automatisch auf eine mobile Ansicht um (`?mobile=1` erzwingt sie, `?mobile=0` schaltet sie ab). Es gibt nur **Leuchttisch** und **Galerie**; Dunkelkammer, Scan, Ordnen, Angleichen, KI-Tags und XMP-Export bleiben dem Desktop vorbehalten.
+- **Leuchttisch:** ☰ öffnet Filmrollen, Kataloge, «Nach Datum» und die Filter als Seitenmenü; die Suche liegt darunter in voller Breite. Raster mit grossen Kacheln; Tippen öffnet die Galerie, der Kreis oben rechts auf der Kachel wählt aus (dann «⇪ Teilen» für mehrere Fotos, bis 30). Verändern lässt sich auf dem Handy nichts ausser der Bewertung: keine Tags, Verschieben, Katalogpflege oder Duplikate.
+- **Teilen / Export:** «⇪ Teilen» (Galerie oder Auswahl) rendert die Fotos so, wie sie in der Galerie aussehen, im gewählten Profil (Standard **WhatsApp**: 1600 px, JPEG 85 %; ausserdem «Gross» 3000 px und alle eigenen sRGB-JPEG-Profile bis 3200 px) und öffnet das Teilen-Menü des Handys. Das geht nur über **https://** (Reverse Proxy); über http werden die Dateien stattdessen heruntergeladen.
+- **Galerie:** Bild füllt den Bildschirm. Wischen nach links/rechts blättert, Doppeltippen oder Zweifinger-Zoom vergrössert (verschieben mit einem Finger), ⓘ blendet die Angaben als Blatt von unten ein (Bewertung zum Antippen, Tags, Filmrolle, Kataloge, Aufnahmedaten), «Original» wechselt zum Kamera-Vorschaubild.
 
 ## Ausgabeprofile
 
-Standard: `web`, `voll_srgb`, `druck_adobergb`, `archiv_tiff`. Eigene in `data/output_profiles.yaml`:
+Standard: `whatsapp`, `handy_gross`, `web`, `voll_srgb`, `druck_adobergb`, `archiv_tiff`. Eigene in `data/output_profiles.yaml`:
 
 ```yaml
 mein_profil: { format: jpeg, color_space: adobergb, quality: 92, max_side: 4000 }

@@ -20,6 +20,8 @@ class OutputProfile(BaseModel):
 
 
 DEFAULT_PROFILES = {
+    "whatsapp": OutputProfile(format="jpeg", color_space="srgb", quality=85, max_side=1600),
+    "handy_gross": OutputProfile(format="jpeg", color_space="srgb", quality=92, max_side=3000),
     "web": OutputProfile(format="jpeg", color_space="srgb", quality=90, max_side=2048),
     "voll_srgb": OutputProfile(format="jpeg", color_space="srgb", quality=95),
     "druck_adobergb": OutputProfile(format="jpeg", color_space="adobergb", quality=95),

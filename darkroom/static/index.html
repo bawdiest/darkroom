@@ -148,6 +148,18 @@
   body.mobile .stars span { font-size:32px; padding:0 2px; }
   body.mobile #linfo select, body.mobile #linfo input.small { font-size:16px; padding:8px 10px; }
   body.mobile #lstat { bottom:calc(10px + env(safe-area-inset-bottom)); }
+  /* nur ansehen, suchen, bewerten, teilen: alles Ändernde ausblenden */
+  body.mobile #selActions, body.mobile #newRoll, body.mobile #newCat, body.mobile #rollTools, body.mobile #catTools,
+  body.mobile #iMoveRoll, body.mobile #iAddCat, body.mobile #iTagIn, body.mobile #linfo .actions, body.mobile #linfo .tg b { display:none !important; }
+  #lshare, #selShare, #xsheet { display:none; }
+  body.mobile #lshare { display:inline-block; }
+  body.mobile #selShare.show { display:inline-block; background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
+  #xsheet { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.6); align-items:flex-end; }
+  #xsheet.open { display:flex; }
+  #xbox { width:100%; background:var(--panel); border-radius:14px 14px 0 0; padding:16px 16px calc(18px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:12px; box-shadow:0 -8px 28px rgba(0,0,0,.55); }
+  #xbox h3 { margin:0; font-size:16px; } #xbox select, #xbox button { font-size:16px; padding:12px; width:100%; }
+  #xbox button.go { background:var(--acc); color:#1b1b1d; border-color:var(--acc); font-weight:600; }
+  #xmsg { color:var(--mute); font-size:13px; white-space:pre-wrap; min-height:18px; } #xmsg.bad { color:#ff7b72; }
 </style>
 </head>
 <body>
@@ -210,7 +222,7 @@
       <div id="count" style="color:var(--mute)"></div>
     </aside>
     <div id="gridWrap">
-      <div id="selbar"><span id="selInfo"></span><button id="selAll">Alle auswählen</button><button id="selNone">Auswahl aufheben</button>
+      <div id="selbar"><span id="selInfo"></span><button id="selAll">Alle auswählen</button><button id="selNone">Auswahl aufheben</button><button id="selShare" title="Die ausgewählten Fotos teilen (z. B. per WhatsApp)">⇪ Teilen</button>
         <span class="grp" id="selActions">
           <select id="selRoll" title="Jedes Foto liegt in genau einer Filmrolle"><option value="">In Filmrolle verschieben…</option></select>
           <select id="selCat"><option value="">Zu Katalog hinzufügen…</option></select>
@@ -226,6 +238,7 @@
         <button id="lback" title="Esc">← Raster</button>
         <span id="ltitle"></span><span class="spacer"></span><span id="lpos"></span>
         <button id="infoBtn" title="Angaben ein-/ausblenden">ⓘ</button>
+        <button id="lshare" title="Teilen / Exportieren">⇪ Teilen</button>
         <button id="lorig" title="O: zwischen bearbeiteter Ansicht und Kamera-Vorschaubild wechseln">Original</button>
       </div>
       <div id="lstage">
@@ -274,10 +287,17 @@
     </div>
   </section>
 </main>
+<div id="xsheet"><div id="xbox">
+  <h3 id="xtitle">Teilen</h3>
+  <select id="xprof"></select>
+  <div id="xmsg"></div>
+  <button id="xgo" class="go">Teilen …</button>
+  <button id="xclose">Schliessen</button>
+</div></div>
 <script>
-const $ = s => document.querySelector(s);
+const $ =s => document.querySelector(s);
 // Mobile Ansicht: nur Leuchttisch und Galerie (automatisch bei schmalem Bildschirm; ?mobile=1 / ?mobile=0 erzwingt)
-const mq = matchMedia('(max-width: 820px)'), forced = new URLSearchParams(location.search).get('mobile');
+const mq = matchMedia('(max-width: 820px), (pointer: coarse) and (max-height: 520px)'), forced = new URLSearchParams(location.search).get('mobile');
 const isMobile = () => forced === '1' || (forced !== '0' && mq.matches);
 function applyMode() {
   const m = isMobile(); document.body.classList.toggle('mobile', m);
@@ -494,8 +514,9 @@ async function loadGrid() {
 function updateSel() {
   document.querySelectorAll('#grid .card').forEach(c => c.classList.toggle('sel', sel.has(c.dataset.id)));
   const vis = list.filter(p => sel.has(p.id)).length;
-  $('#selInfo').textContent = sel.size ? `${sel.size} ausgewählt` + (vis !== sel.size ? ` (${vis} hier sichtbar)` : '') : 'Klick = Galerie · Strg/Umschalt-Klick oder ✓ = auswählen';
+  $('#selInfo').textContent = sel.size ? `${sel.size} ausgewählt` + (vis !== sel.size ? ` (${vis} hier sichtbar)` : '') : (isMobile() ? 'Antippen = Galerie · ✓ = auswählen' : 'Klick = Galerie · Strg/Umschalt-Klick oder ✓ = auswählen');
   $('#selActions').style.display = sel.size ? 'flex' : 'none';
+  $('#selShare').classList.toggle('show', sel.size > 0);
   $('#selRemove').style.display = view.type === 'catalog' ? '' : 'none';
   $('#selDel').style.display = list.some(p => sel.has(p.id) && p.is_duplicate) ? '' : 'none';
 }
@@ -766,6 +787,64 @@ document.addEventListener('keydown', e => {
   else if (k === 'v' || k === 'V') makeDuplicate().catch(err => $('#lstat').textContent = err.message);
   else if (k === 'Delete') deleteCurrentDuplicate().catch(err => $('#lstat').textContent = err.message);
 });
+
+// ---------- Teilen / Export für das Handy (z. B. WhatsApp) ----------
+let shareIds = [], shareFiles = null, shareProfLoaded = false;
+const SHARE_MAX = 30;  // WhatsApp nimmt höchstens 30 Bilder auf einmal
+const xmsg = (t, bad) => { $('#xmsg').textContent = t; $('#xmsg').classList.toggle('bad', !!bad); };
+const SHARE_NAMES = {whatsapp:'WhatsApp', web:'Web', handy_gross:'Gross', voll_srgb:'Volle Qualität'};
+async function openShare(ids) {
+  if (!ids.length) return;
+  if (ids.length > SHARE_MAX) { $('#count').textContent = `Bitte höchstens ${SHARE_MAX} Fotos auf einmal teilen.`; return; }
+  shareIds = ids; shareFiles = null;
+  $('#xtitle').textContent = ids.length === 1 ? 'Foto teilen' : `${ids.length} Fotos teilen`;
+  xmsg(''); $('#xgo').textContent = 'Teilen …'; $('#xgo').disabled = false; $('#xsheet').classList.add('open');
+  if (shareProfLoaded) return;
+  try {
+    const pr = await (await api('/api/output-profiles')).json(), s = $('#xprof');
+    Object.entries(pr).filter(([, v]) => v.format === 'jpeg' && v.color_space === 'srgb' && (v.max_side || 0) <= 3200 && v.max_side)
+      .forEach(([k, v]) => s.add(new Option(`${SHARE_NAMES[k] || k} · ${v.max_side} px`, k)));
+    let last = null; try { last = localStorage.getItem('darkroom.shareProfile'); } catch (e) {}
+    s.value = [...s.options].some(o => o.value === last) ? last : 'whatsapp';
+    shareProfLoaded = true;
+  } catch (e) { xmsg(e.message, true); }
+}
+function closeShare() { $('#xsheet').classList.remove('open'); shareFiles = null; }
+async function finishShare(auto) {
+  const files = shareFiles;
+  if (navigator.canShare && navigator.canShare({files})) {
+    try { await navigator.share({files}); closeShare(); return; }
+    catch (e) {
+      if (e.name === 'AbortError') { xmsg('Abgebrochen.'); $('#xgo').textContent = 'Nochmal teilen'; return; }
+      if (e.name === 'NotAllowedError' && auto) { xmsg('Fertig vorbereitet. Bitte noch einmal tippen.'); $('#xgo').textContent = 'Jetzt teilen'; return; }
+      xmsg(e.message, true); return;
+    }
+  }
+  for (const f of files) {  // Ersatz ohne Teilen-Menü (das Handy verlangt dafür https://)
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  }
+  xmsg(`${files.length} Datei(en) heruntergeladen.\nDas Teilen-Menü braucht eine https-Adresse.`);
+}
+$('#xgo').onclick = async () => {
+  if (shareFiles) return finishShare(false);
+  const profile = $('#xprof').value; try { localStorage.setItem('darkroom.shareProfile', profile); } catch (e) {}
+  $('#xgo').disabled = true; const files = [];
+  try {
+    for (const [i, id] of shareIds.entries()) {
+      xmsg(`Bereite vor ${i + 1}/${shareIds.length} …`);
+      const r = await api(`/api/photos/${id}/share`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile})});
+      const m = /filename\*=UTF-8''([^;]+)/.exec(r.headers.get('Content-Disposition') || '');
+      files.push(new File([await r.blob()], m ? decodeURIComponent(m[1]) : `foto${i + 1}.jpg`, {type:'image/jpeg'}));
+    }
+  } catch (e) { xmsg(e.message, true); $('#xgo').disabled = false; return; }
+  shareFiles = files; $('#xgo').disabled = false; xmsg('');
+  await finishShare(true);
+};
+$('#xprof').onchange = () => { shareFiles = null; $('#xgo').textContent = 'Teilen …'; xmsg(''); };
+$('#xclose').onclick = closeShare;
+$('#xsheet').addEventListener('click', e => { if (e.target.id === 'xsheet') closeShare(); });
+$('#lshare').onclick = () => { if (lidx >= 0) openShare([list[lidx].id]); };
+$('#selShare').onclick = () => openShare([...sel]);
 
 // ---------- Mobile: Menü, Info-Blatt, Wischen und Zoomen in der Galerie ----------
 $('#menuBtn').onclick = () => document.body.classList.toggle('drawer');

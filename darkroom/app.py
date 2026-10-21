@@ -589,6 +589,31 @@ def export_photo(pid: str, body: ExportBody):
     return FileResponse(out, filename=out.name)
 
 
+@app.post("/api/photos/{pid}/share")
+def share_photo(pid: str, body: ExportBody):
+    """Teilen vom Handy: das Bild aus der Galerie-Ansicht (Parameter + Script), nach Ausgabeprofil verkleinert.
+    Schneller als der volle Export (keine RAW-Entwicklung in voller Auflösung); nichts wird auf dem Server abgelegt."""
+    import cv2
+    import numpy as np
+
+    row = _photo(pid)
+    prof = load_profiles(catalog.DATA).get(body.profile)
+    if prof is None:
+        raise HTTPException(404, f"Unbekanntes Ausgabeprofil '{body.profile}'")
+    if prof.format != "jpeg" or prof.color_space != "srgb" or (prof.max_side or 0) > VIEW_SIDE:
+        raise HTTPException(422, f"Profil '{body.profile}' passt nicht zum Teilen (nur JPEG, sRGB, bis {VIEW_SIDE} px).")
+    try:
+        f = _view_cache(pid) if _view_fresh(row) else _make_view(row)
+        bgr = cv2.imdecode(np.frombuffer(f.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError("Ansicht nicht lesbar")
+        data, ext = encode(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0, prof)
+    except Exception as e:  # noqa: BLE001 - verständliche Meldung statt «500»
+        raise HTTPException(500, f"Teilen von {catalog.export_stem(row)} fehlgeschlagen ({type(e).__name__}: {e}).")
+    name = f"{catalog.export_stem(row)}.{ext}"
+    return Response(data, media_type="image/jpeg", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
 class XmpBody(BaseModel):
     ids: list[str] | None = None
 

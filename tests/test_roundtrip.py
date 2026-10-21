@@ -85,6 +85,23 @@ def test_import_preview_export(env):
     assert abs(p.crop.angle - (-1.2)) < 1e-3
 
 
+def test_share_for_phone(env):
+    lib, data = env
+    from fastapi.testclient import TestClient
+
+    from darkroom.app import app
+
+    c = TestClient(app)
+    c.post("/api/scan")
+    pid = c.get("/api/photos").json()[0]["id"]
+    r = c.post(f"/api/photos/{pid}/share", json={"profile": "whatsapp"})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert "test.jpg" in r.headers["content-disposition"]
+    assert cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR) is not None
+    assert c.post(f"/api/photos/{pid}/share", json={"profile": "gibtsnicht"}).status_code == 404
+    assert c.post(f"/api/photos/{pid}/share", json={"profile": "archiv_tiff"}).status_code == 422
+
+
 def test_preset_overrides(env):
     lib, data = env
     (data / "presets" / "warm.yaml").write_text("exposure: 0.3\ncontrast: 8\n")
