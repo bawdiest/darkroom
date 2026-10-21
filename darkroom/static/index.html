@@ -151,6 +151,7 @@
   /* nur ansehen, suchen, bewerten, teilen: alles Ändernde ausblenden */
   body.mobile #selActions, body.mobile #newRoll, body.mobile #newCat, body.mobile #rollTools, body.mobile #catTools,
   body.mobile #iMoveRoll, body.mobile #iAddCat, body.mobile #iTagIn, body.mobile #linfo .actions, body.mobile #linfo .tg b { display:none !important; }
+  body.mobile #chips, body.mobile #ftagBox { display:none !important; }
   #lshare, #selShare, #xsheet { display:none; }
   body.mobile #lshare { display:inline-block; }
   body.mobile #selShare.show { display:inline-block; background:var(--acc); color:#1b1b1d; border-color:var(--acc); }
@@ -216,7 +217,7 @@
       <div><label>Objektiv</label><select id="flens"><option value="">alle</option></select></div>
       <div><label>Mindestbewertung</label><select id="frate"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
       <div><label>Bearbeitung</label><select id="fstate"><option value="">alle</option><option value="edited">bearbeitet</option><option value="script">mit Script</option><option value="unedited">unbearbeitet</option></select></div>
-      <div><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
+      <div id="ftagBox"><label>Tag</label><select id="ftag"><option value="">alle</option></select></div>
       <div id="sizeBox"><label>Grösse der Vorschau <span id="sizeVal" style="float:right"></span></label>
         <input id="size" type="range" min="100" max="520" step="10" style="padding:0" title="Strg + Mausrad im Raster ändert die Grösse ebenfalls"></div>
       <div id="count" style="color:var(--mute)"></div>
